@@ -1,0 +1,345 @@
+@startuml
+namespace forest {
+    class Client << (S,Aquamarine) >> {
+        - name string
+        - path string
+
+    }
+    class Etcd << (S,Aquamarine) >> {
+        - endpoints []string
+        - client *clientv3.Client
+        - kv clientv3.KV
+        - timeout time.Duration
+
+        - handleKeyChangeEvent(event *clientv3.Event, events <font color=blue>chan</font> *KeyChangeEvent) 
+        - transfer(from string, to string, value string) (bool, error)
+
+        + Get(key string) ([]byte, error)
+        + GetWithPrefixKey(prefixKey string) ([][]byte, [][]byte, error)
+        + GetWithPrefixKeyLimit(prefixKey string, limit int64) ([][]byte, [][]byte, error)
+        + Put(key string, value string) error
+        + PutNotExist(key string, value string) (bool, []byte, error)
+        + Update(key string, value string, oldValue string) (bool, error)
+        + Delete(key string) error
+        + DeleteWithPrefixKey(prefixKey string) error
+        + Watch(key string) *WatchKeyChangeResponse
+        + WatchWithPrefixKey(prefixKey string) *WatchKeyChangeResponse
+        + TxWithTTL(key string, value string, ttl int64) (*TxResponse, error)
+        + TxKeepaliveWithTTL(key string, value string, ttl int64) (*TxResponse, error)
+
+    }
+    class Group << (S,Aquamarine) >> {
+        - path string
+        - name string
+        - node *JobNode
+        - watchPath string
+        - clients <font color=blue>map</font>[string]*Client
+        - watcher clientv3.Watcher
+        - cancelFunc context.CancelFunc
+        - lk *sync.RWMutex
+
+        - watchClientPath() 
+        - loopLoadAllClient() 
+        - handleClientChangeEvent(changeEvent *KeyChangeEvent) 
+        - addClient(name string, path string) 
+        - deleteClient(path string) 
+        - selectClient() (*Client, error)
+
+    }
+    class GroupConf << (S,Aquamarine) >> {
+        + Name string
+        + Remark string
+
+    }
+    class JobAPi << (S,Aquamarine) >> {
+        - node *JobNode
+        - echo *echo.Echo
+
+        - editJob(context echo.Context) error
+        - jobList(context echo.Context) error
+        - deleteJob(context echo.Context) error
+        - addGroup(context echo.Context) error
+        - groupList(context echo.Context) error
+        - nodeList(context echo.Context) error
+        - planList(context echo.Context) error
+        - clientList(context echo.Context) error
+        - snapshotList(context echo.Context) error
+        - snapshotDelete(context echo.Context) error
+        - executeSnapshotList(context echo.Context) error
+        - manualExecute(context echo.Context) error
+
+        + AddJob(context echo.Context) error
+
+    }
+    class JobChangeEvent << (S,Aquamarine) >> {
+        + Type int
+        + Conf *JobConf
+
+    }
+    class JobClient << (S,Aquamarine) >> {
+        + Name string
+        + Path string
+        + Group string
+
+    }
+    class JobClientDeleteEvent << (S,Aquamarine) >> {
+        + Client *Client
+        + Group *Group
+
+    }
+    class JobCollection << (S,Aquamarine) >> {
+        - node *JobNode
+        - lk *sync.RWMutex
+
+        - watch() 
+        - handleJobExecuteStatusCollectionEvent(event *KeyChangeEvent) 
+        - handleJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) 
+        - handleCreateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) 
+        - handleUpdateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) 
+        - checkExist(id string) (bool, error)
+        - loop() 
+
+    }
+    class JobConf << (S,Aquamarine) >> {
+        + Id string
+        + Name string
+        + Group string
+        + Cron string
+        + Status int
+        + Target string
+        + Params string
+        + Mobile string
+        + Remark string
+        + Version int
+
+    }
+    class JobExecuteSnapshot << (S,Aquamarine) >> {
+        + Id string
+        + JobId string
+        + Name string
+        + Ip string
+        + Group string
+        + Cron string
+        + Target string
+        + Params string
+        + Mobile string
+        + Remark string
+        + CreateTime string
+        + StartTime string
+        + FinishTime string
+        + Times int
+        + Status int
+        + Result string
+
+    }
+    class JobExecutor << (S,Aquamarine) >> {
+        - node *JobNode
+        - snapshots <font color=blue>chan</font> *JobSnapshot
+
+        - lookup() 
+        - handleJobSnapshot(snapshot *JobSnapshot) 
+        - pushSnapshot(snapshot *JobSnapshot) 
+
+    }
+    class JobGroupManager << (S,Aquamarine) >> {
+        - node *JobNode
+        - groups <font color=blue>map</font>[string]*Group
+        - lk *sync.RWMutex
+
+        - watchGroupPath() 
+        - loopLoadGroups() 
+        - addGroup(name string, path string) 
+        - deleteGroup(path string) 
+        - handleGroupChangeEvent(changeEvent *KeyChangeEvent) 
+        - handleGroupCreateEvent(changeEvent *KeyChangeEvent) 
+        - handleGroupDeleteEvent(changeEvent *KeyChangeEvent) 
+        - selectClient(name string) (*Client, error)
+
+    }
+    class JobManager << (S,Aquamarine) >> {
+        - node *JobNode
+
+        - watchJobConfPath() 
+        - loopLoadJobConf() 
+        - handleJobConfChangeEvent(changeEvent *KeyChangeEvent) 
+        - handleJobCreateEvent(value []byte) 
+        - handleJobUpdateEvent(value []byte) 
+        - handleJobDeleteEvent(key string) 
+        - editJob(jobConf *JobConf) error
+        - deleteJob(jobConf *JobConf) error
+        - jobList() ([]*JobConf, error)
+        - addGroup(groupConf *GroupConf) error
+        - groupList() ([]*GroupConf, error)
+        - nodeList() ([]string, error)
+
+        + AddJob(jobConf *JobConf) error
+
+    }
+    class JobNode << (S,Aquamarine) >> {
+        - id string
+        - registerPath string
+        - electPath string
+        - etcd *Etcd
+        - state int
+        - apiAddress string
+        - api *JobAPi
+        - manager *JobManager
+        - scheduler *JobScheduler
+        - groupManager *JobGroupManager
+        - exec *JobExecutor
+        - engine *xorm.Engine
+        - collection *JobCollection
+        - failOver *JobSnapshotFailOver
+        - listeners []NodeStateChangeListener
+        - close <font color=blue>chan</font> bool
+
+        - addListeners() 
+        - changeState(state int) 
+        - initNode() 
+        - watchRegisterJobNode() 
+        - handleRegisterJobNodeChangeEvent(changeEvent *KeyChangeEvent) 
+        - registerJobNode() (*TxResponse, error)
+        - loopRegisterJobNode() 
+        - elect() (*TxResponse, error)
+        - watchElectPath() 
+        - handleElectLeaderChangeEvent(changeEvent *KeyChangeEvent) 
+        - loopStartElect() 
+
+        + Bootstrap() 
+        + Close() 
+
+    }
+    class JobScheduler << (S,Aquamarine) >> {
+        - node *JobNode
+        - eventChan <font color=blue>chan</font> *JobChangeEvent
+        - schedulePlans <font color=blue>map</font>[string]*SchedulePlan
+        - lk *sync.RWMutex
+        - syncStatus bool
+
+        - handleJobChangeEvent(event *JobChangeEvent) 
+        - handleJobCreateEvent(event *JobChangeEvent) 
+        - handleJobUpdateEvent(event *JobChangeEvent) 
+        - handleJobDeleteEvent(event *JobChangeEvent) 
+        - createJobPlan(event *JobChangeEvent) 
+        - pushJobChangeEvent(event *JobChangeEvent) 
+        - loopSchedule() 
+        - trySchedule() time.Duration
+        - loopSync() 
+        - trySync() 
+        - existPlan(id string, jobConfs []*JobConf) bool
+        - handleJobConfSync(conf *JobConf) 
+        - notify(state int) 
+
+    }
+    class JobSnapshot << (S,Aquamarine) >> {
+        + Id string
+        + JobId string
+        + Name string
+        + Ip string
+        + Group string
+        + Cron string
+        + Target string
+        + Params string
+        + Mobile string
+        + Remark string
+        + CreateTime string
+
+    }
+    class JobSnapshotFailOver << (S,Aquamarine) >> {
+        - node *JobNode
+        - deleteClientEventChans <font color=blue>chan</font> *JobClientDeleteEvent
+
+        - loop() 
+        - handleJobClientDeleteEvent(event *JobClientDeleteEvent) 
+
+    }
+    class KeyChangeEvent << (S,Aquamarine) >> {
+        + Type int
+        + Key string
+        + Value []byte
+
+    }
+    class ManualExecuteJobParam << (S,Aquamarine) >> {
+        + Id string
+        + Name string
+        + Group string
+
+    }
+    class Node << (S,Aquamarine) >> {
+        + Name string
+        + State int
+
+    }
+    interface NodeStateChangeListener  {
+        - notify( int) 
+
+    }
+    class PageResult << (S,Aquamarine) >> {
+        + TotalPage int
+        + TotalCount int
+        + List <font color=blue>interface</font>{}
+
+    }
+    class QueryClientParam << (S,Aquamarine) >> {
+        + Group string
+
+    }
+    class QueryExecuteSnapshotParam << (S,Aquamarine) >> {
+        + Group string
+        + Id string
+        + Ip string
+        + JobId string
+        + Name string
+        + Status int
+        + PageSize int
+        + PageNo int
+
+    }
+    class QuerySnapshotParam << (S,Aquamarine) >> {
+        + Group string
+        + Id string
+        + Ip string
+
+    }
+    class Result << (S,Aquamarine) >> {
+        + Code int
+        + Data <font color=blue>interface</font>{}
+        + Message string
+
+    }
+    class SchedulePlan << (S,Aquamarine) >> {
+        - schedule cron.Schedule
+
+        + Id string
+        + Name string
+        + Group string
+        + Cron string
+        + Status int
+        + Target string
+        + Params string
+        + Mobile string
+        + Remark string
+        + NextTime time.Time
+        + BeforeTime time.Time
+        + Version int
+
+    }
+    class TxResponse << (S,Aquamarine) >> {
+        + Success bool
+        + LeaseID clientv3.LeaseID
+        + Lease clientv3.Lease
+        + Key string
+        + Value string
+
+    }
+    class WatchKeyChangeResponse << (S,Aquamarine) >> {
+        + Event <font color=blue>chan</font> *KeyChangeEvent
+        + CancelFunc context.CancelFunc
+        + Watcher clientv3.Watcher
+
+    }
+}
+
+"forest.NodeStateChangeListener" <|-- "forest.JobScheduler"
+
+@enduml

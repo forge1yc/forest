@@ -41,7 +41,7 @@ func (f *JobSnapshotFailOver) loop() {
 func (f *JobSnapshotFailOver) handleJobClientDeleteEvent(event *JobClientDeleteEvent) {
 
 	var (
-		keys    [][]byte
+		keys    [][]byte // why []string
 		values  [][]byte
 		err     error
 		client  *Client
@@ -52,7 +52,7 @@ RETRY:
 	prefixKey := fmt.Sprintf(JobClientSnapshotPath, event.Group.name, event.Client.name)
 	if keys, values, err = f.node.etcd.GetWithPrefixKey(prefixKey); err != nil {
 		log.Errorf("the fail client:%v for path:%s,error must retry", event.Client, prefixKey)
-		time.Sleep(time.Second)
+		time.Sleep(time.Second) // 失败了就一直产生尝试吗
 		goto RETRY
 	}
 
@@ -63,6 +63,7 @@ RETRY:
 
 	for pos := 0; pos < len(keys); pos++ {
 
+		// 这里是随机选择一个好节点，把故障转移走
 		if client, err = event.Group.selectClient(); err != nil {
 			log.Warnf("%v", err)
 			continue
@@ -74,7 +75,7 @@ RETRY:
 		value := string(values[pos])
 		//  transfer the kv
 		if success, _ = f.node.etcd.transfer(from, to, value); success {
-			log.Infof("the fail client:%v for path:%s success transfer form %s to %s", event.Client, prefixKey, from, to)
+			log.Infof("the fail client:%v for path:%s success transfer form %s to %s", event.Client, prefixKey, from, to)  // 这里从一个点，转移到另一个点有点没有想明白
 		}
 
 	}

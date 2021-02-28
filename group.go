@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	GroupConfPath = "/forest/server/group/"
+	GroupConfPath = "/forest/server/group/" // 这里嘴一开始谁注册的
 	ClientPath    = "/forest/client/%s/clients/"
 )
 
@@ -30,7 +30,7 @@ func NewJobGroupManager(node *JobNode) (mgr *JobGroupManager) {
 		lk:     &sync.RWMutex{},
 	}
 
-	go mgr.watchGroupPath()
+	go mgr.watchGroupPath()  // 内部线程阻塞监视
 
 	go mgr.loopLoadGroups()
 
@@ -41,9 +41,11 @@ func NewJobGroupManager(node *JobNode) (mgr *JobGroupManager) {
 // watch the group path
 func (mgr *JobGroupManager) watchGroupPath() {
 
+	// 这里查看所有的
 	keyChangeEventResponse := mgr.node.etcd.WatchWithPrefixKey(GroupConfPath)
+	// 下面可以用for + switch 判断
 	for ch := range keyChangeEventResponse.Event {
-		mgr.handleGroupChangeEvent(ch)
+		mgr.handleGroupChangeEvent(ch) // 阻塞一直等待事件的到来
 	}
 
 }
@@ -56,9 +58,9 @@ RETRY:
 		values [][]byte
 		err    error
 	)
-	if keys, values, err = mgr.node.etcd.GetWithPrefixKey(GroupConfPath); err != nil {
+	if keys, values, err = mgr.node.etcd.GetWithPrefixKey(GroupConfPath); err != nil { // 所以之前必须有一个etcd管理，来注册所有的节点信息，在前面应该有配置,node那里
 
-		goto RETRY
+		goto RETRY // 拿不到集群的就一直尝试，这里是拿所有集群，所以每个节点都要拿到所有的信息
 	}
 
 	if len(keys) == 0 {
@@ -66,14 +68,14 @@ RETRY:
 	}
 
 	for i := 0; i < len(keys); i++ {
-		path := string(keys[i])
+		path := string(keys[i]) // 这里对应的是集群地址 ip
 		groupConf, err := UParkGroupConf(values[i])
 		if err != nil {
 			log.Warnf("upark the group conf error:%#v", err)
 			continue
 		}
 
-		mgr.addGroup(groupConf.Name, path)
+		mgr.addGroup(groupConf.Name, path) // name 名字
 	}
 
 }
@@ -139,8 +141,8 @@ func (mgr *JobGroupManager) handleGroupCreateEvent(changeEvent *KeyChangeEvent) 
 		return
 	}
 
-	path := changeEvent.Key
-	mgr.addGroup(groupConf.Name, path)
+	path := changeEvent.Key // path 都是key
+	mgr.addGroup(groupConf.Name, path) // remark 含义是啥我还不太明白呢
 
 }
 
@@ -158,6 +160,7 @@ func (mgr *JobGroupManager) selectClient(name string) (client *Client, err error
 		ok    bool
 	)
 
+	// 这里设置的是可以自选集群，其实挺好的，然后再集群里面找
 	if group, ok = mgr.groups[GroupConfPath+name]; !ok {
 		err = errors.New(fmt.Sprintf("the group:%s not found", name))
 		return
@@ -185,7 +188,7 @@ func NewGroup(name, path string, node *JobNode) (group *Group) {
 		name:      name,
 		path:      path,
 		node:      node,
-		watchPath: fmt.Sprintf(ClientPath, name),
+		watchPath: fmt.Sprintf(ClientPath, name),  // name is ip
 		clients:   make(map[string]*Client),
 		lk:        &sync.RWMutex{},
 	}
@@ -198,7 +201,7 @@ func NewGroup(name, path string, node *JobNode) (group *Group) {
 }
 
 // watch the client path
-func (group *Group) watchClientPath() {
+func (group *Group) watchClientPath() { // 这里监控是否有集群下的节点变化
 
 	keyChangeEventResponse := group.node.etcd.WatchWithPrefixKey(group.watchPath)
 	group.watcher = keyChangeEventResponse.Watcher
@@ -221,8 +224,9 @@ RETRY:
 		err    error
 	)
 
+	// 这里能这样做是因为节点初始化的时候都注册进去了
 	prefix := fmt.Sprintf(ClientPath, group.name)
-	if keys, values, err = group.node.etcd.GetWithPrefixKey(prefix); err != nil {
+	if keys, values, err = group.node.etcd.GetWithPrefixKey(prefix); err != nil { // 这里面是所有的ip，也就是真实的主机
 
 		time.Sleep(time.Second)
 		goto RETRY
@@ -233,8 +237,8 @@ RETRY:
 	}
 
 	for i := 0; i < len(keys); i++ {
-		path := string(keys[i])
-		value := string(values[i])
+		path := string(keys[i]) // etcd 长地址
+		value := string(values[i]) // 单机ip    如果集群，这里对应的是名字
 		if value == "" {
 			log.Warnf("the client value is nil for path:%s", path)
 			continue
@@ -251,8 +255,8 @@ func (group *Group) handleClientChangeEvent(changeEvent *KeyChangeEvent) {
 	switch changeEvent.Type {
 
 	case KeyCreateChangeEvent:
-		path := changeEvent.Key
-		name := string(changeEvent.Value)
+		path := changeEvent.Key // path 是 key value 代表 集群
+		name := string(changeEvent.Value) // name 是ip
 		group.addClient(name, path)
 
 	case KeyUpdateChangeEvent:
@@ -278,7 +282,7 @@ func (group *Group) addClient(name, path string) {
 		path: path,
 	}
 
-	group.clients[path] = client
+	group.clients[path] = client // 这个path 是
 	log.Printf("add a new client for path:%s", path)
 
 }
@@ -311,18 +315,18 @@ func (group *Group) selectClient() (client *Client, err error) {
 	group.lk.RLock()
 	defer group.lk.RUnlock()
 
-	if len(group.clients) == 0 {
+	if len(group.clients) == 0 { // 初始化的时候一个集群下面有多少都被添加进去了
 		err = errors.New(fmt.Sprintf("the group:%s,has no client to select", group.name))
 		return
 	}
 
 	num := len(group.clients)
 
-	pos := rand.Intn(num)
+	pos := rand.Intn(num) // 就是为了随机选择一个client，client 带ip
 
 	index := 0
 
-	for _, c := range group.clients {
+	for _, c := range group.clients { // 但是为啥不用这里的索引呢
 
 		if index == pos {
 

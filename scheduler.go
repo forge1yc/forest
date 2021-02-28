@@ -188,16 +188,18 @@ func (sch *JobScheduler) loopSchedule() {
 
 	timer := time.NewTimer(time.Second)
 
-	for {
+	for { // 这类是无限调度了
 
 		select {
 
-		case <-timer.C:
+		case <-timer.C: // 这里一秒调度一次？？如果有重复的怎么办
 
-		case event := <-sch.eventChan:
+		case event := <-sch.eventChan: // 这里接上面的事件
 
 			sch.handleJobChangeEvent(event)
 		}
+
+		// select 执行完之后到这里
 
 		durationTime := sch.trySchedule()
 		log.Infof("the durationTime :%d", durationTime)
@@ -220,10 +222,10 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 	now := time.Now()
 	leastTime := new(time.Time)
 	first = true
-	for _, plan := range sch.schedulePlans {
+	for _, plan := range sch.schedulePlans { // 如果有就一直调度,怎么还是单机啊，和我想的有点不一样
 
 		scheduleTime := plan.NextTime
-		if scheduleTime.Before(now) && sch.node.state == NodeLeaderState {
+		if scheduleTime.Before(now) && sch.node.state == NodeLeaderState { // 只有master才可以调度
 			log.Infof("schedule execute the plan:%#v", plan)
 
 			snapshot := &JobSnapshot{
@@ -238,9 +240,9 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 				Remark:     plan.Remark,
 				CreateTime: ToDateString(now),
 			}
-			sch.node.exec.pushSnapshot(snapshot)
+			sch.node.exec.pushSnapshot(snapshot) // 执行计划了，去找对应的集群
 		}
-		nextTime := plan.schedule.Next(now)
+		nextTime := plan.schedule.Next(now) // 这里执行了吗
 		plan.NextTime = nextTime
 		plan.BeforeTime = scheduleTime
 
@@ -276,14 +278,15 @@ func (sch *JobScheduler) loopSync() {
 		select {
 
 		case <-timer.C:
-			sch.trySync()
+			sch.trySync() // 这是定时同步 所有节点都会做的事情，而主节点当选之后需要特殊的事情
 		}
-		timer.Reset(1 * time.Minute)
+		timer.Reset(1 * time.Minute) // 一分钟同步一次
 
 	}
 
 }
 
+// 同步最新配置，但也只是leader节点
 func (sch *JobScheduler) trySync() {
 
 	var (
@@ -308,7 +311,7 @@ func (sch *JobScheduler) trySync() {
 	}()
 
 	// load all job conf list
-	if jobConfs, err = sch.node.manager.jobList(); err != nil {
+	if jobConfs, err = sch.node.manager.jobList(); err != nil { // 这里是最新的jobConfs，目标是让所有的调度节点都同步最新的状态
 		return
 	}
 
@@ -326,7 +329,7 @@ func (sch *JobScheduler) trySync() {
 	// sync not receive the job conf delete event
 	for id, plan := range sch.schedulePlans {
 
-		if !sch.existPlan(id, jobConfs) {
+		if !sch.existPlan(id, jobConfs) { // 只有相符合的才有效
 			log.Warnf("sync the schedule plan %v must delete", plan)
 			delete(sch.schedulePlans, id)
 		}
@@ -336,7 +339,7 @@ func (sch *JobScheduler) trySync() {
 
 }
 
-// check is old plan?
+// check is old plan? // old need delete
 func (sch *JobScheduler) existPlan(id string, jobConfs []*JobConf) bool {
 
 	ok := false
@@ -353,6 +356,7 @@ func (sch *JobScheduler) existPlan(id string, jobConfs []*JobConf) bool {
 
 }
 
+// 转移给其他client
 func (sch *JobScheduler) handleJobConfSync(conf *JobConf) {
 
 	var (
@@ -360,9 +364,9 @@ func (sch *JobScheduler) handleJobConfSync(conf *JobConf) {
 		plan  *SchedulePlan
 	)
 
-	if plan, exist = sch.schedulePlans[conf.Id]; !exist {
+	if plan, exist = sch.schedulePlans[conf.Id]; !exist {// follower do
 
-		if conf.Status == JobRunningStatus {
+		if conf.Status == JobRunningStatus { // 正在执行意味着删除了，所以从新创建？？？
 			log.Warnf("sync the schedule plan the job conf: %v must create", conf)
 			sch.handleJobCreateEvent(&JobChangeEvent{
 				Type: JobCreateChangeEvent,
@@ -374,7 +378,7 @@ func (sch *JobScheduler) handleJobConfSync(conf *JobConf) {
 				log.Warnf("sync the schedule plan %v must update", plan)
 				sch.handleJobUpdateEvent(&JobChangeEvent{
 					Type: JobUpdateChangeEvent,
-					Conf: conf,
+					Conf: conf, // 以最新的为主
 				})
 			}
 
@@ -387,8 +391,9 @@ func (sch *JobScheduler) handleJobConfSync(conf *JobConf) {
 // notify the node state change event
 func (sch *JobScheduler) notify(state int) {
 	log.Infof("found the job :{} state notify state:%d", sch.node, state)
-	if state == NodeLeaderState {
+
+	if state == NodeLeaderState { // 只有leader需要同步一下最新的配置
 		log.Infof("found the job :{} state notify state:%d,must sync the job schedule plan", sch.node, state)
-		sch.trySync()
+		sch.trySync() // 这里就同步了，把leader状态告诉所有人
 	}
 }

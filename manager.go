@@ -36,7 +36,7 @@ func (manager *JobManager) watchJobConfPath() {
 	}
 }
 
-func (manager *JobManager) loopLoadJobConf() {
+func (manager *JobManager) loopLoadJobConf() { // 从这里分配的 但是一开始的节点属于哪个集群是在哪里分配的呢，我还是没有找到
 
 RETRY:
 	var (
@@ -179,10 +179,10 @@ func (manager *JobManager) AddJob(jobConf *JobConf) (err error) {
 	jobConf.Id = GenerateSerialNo()
 	jobConf.Version = 1
 
-	if v, err = ParkJobConf(jobConf); err != nil {
+	if v, err = ParkJobConf(jobConf); err != nil { //值都是json字符串
 		return
 	}
-	if success, _, err = manager.node.etcd.PutNotExist(JobConfPath+jobConf.Id, string(v)); err != nil {
+	if success, _, err = manager.node.etcd.PutNotExist(JobConfPath+jobConf.Id, string(v)); err != nil { // 这里怎么没有看到事件变化啊
 		return
 	}
 

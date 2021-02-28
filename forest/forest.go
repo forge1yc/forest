@@ -18,6 +18,7 @@ const (
 func main() {
 
 	ip := forest.GetLocalIpAddress()
+	log.Info("ip ",ip)
 	if ip == "" {
 		log.Fatal("has no get the ip address")
 
@@ -29,6 +30,7 @@ func main() {
 	help := flag.String("help", "", "forest help")
 	dbUrl := flag.String("db-url", DefaultDbUrl, "db-url for mysql")
 	flag.Parse()
+	flag.Usage()
 	if *help != "" {
 		flag.Usage()
 		return
@@ -42,6 +44,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// 每一个节点具有所有的沟通能力，都被封装好了
 	node, err := forest.NewJobNode(ip, etcd, *httpAddress, *dbUrl)
 	if err != nil {
 

@@ -275,7 +275,7 @@ func (api *JobAPi) nodeList(context echo.Context) (err error) {
 		if name == string(leader) {
 			nodes = append(nodes, &Node{Name: name, State: NodeLeaderState})
 		} else {
-			nodes = append(nodes, &Node{Name: name, State: NodeFollowerState})
+			nodes = append(nodes, &Node{Name: name, State: NodeFollowerState}) // follower node
 		}
 
 	}
@@ -349,6 +349,7 @@ ERROR:
 // 任务快照
 func (api *JobAPi) snapshotList(context echo.Context) (err error) {
 
+	// 这是为了拿下面所有的快照
 	var (
 		query     *QuerySnapshotParam
 		message   string
@@ -372,9 +373,9 @@ func (api *JobAPi) snapshotList(context echo.Context) (err error) {
 		prefix = fmt.Sprintf(JobClientSnapshotPath, query.Group, query.Ip)
 	} else if query.Group != "" && query.Ip == "" {
 		prefix = fmt.Sprintf(JobSnapshotGroupPath, query.Group)
-	}
+	} // 这里是为了添加筛选条件,前端传过来的
 
-	if keys, values, err = api.node.etcd.GetWithPrefixKeyLimit(prefix, 500); err != nil {
+	if keys, values, err = api.node.etcd.GetWithPrefixKeyLimit(prefix, 500); err != nil { // 这里限制500
 		message = err.Error()
 		goto ERROR
 	}
@@ -587,7 +588,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// dispatch the job snapshot the client
-	if success, _, err = api.node.etcd.PutNotExist(snapshotPath, string(value)); err != nil {
+	if success, _, err = api.node.etcd.PutNotExist(snapshotPath, string(value)); err != nil { // 这里一定会执行,仔细找下
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 

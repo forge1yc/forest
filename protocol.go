@@ -85,7 +85,7 @@ type Result struct {
 
 type GroupConf struct {
 	Name   string `json:"name"`
-	Remark string `json:"remark"`
+	Remark string `json:"remark"` // 备注
 }
 
 type JobChangeEvent struct {
@@ -145,22 +145,22 @@ type Node struct {
 }
 
 type JobExecuteSnapshot struct {
-	Id         string `json:"id",xorm:"pk"`
-	JobId      string `json:"jobId",xorm:"job_id"`
-	Name       string `json:"name",xorm:"name"`
-	Ip         string `json:"ip",xorm:"ip"`
-	Group      string `json:"group",xorm:"group"`
-	Cron       string `json:"cron",xorm:"cron"`
-	Target     string `json:"target",xorm:"target"`
-	Params     string `json:"params",xorm:"params"`
-	Mobile     string `json:"mobile",xorm:"mobile"`
-	Remark     string `json:"remark",xorm:"remark"`
-	CreateTime string `json:"createTime",xorm:"create_time"`
-	StartTime  string `json:"startTime",xorm:"start_time"`
-	FinishTime string `json:"finishTime",xorm:"finish_time"`
-	Times      int    `json:"times",xorm:"times"`
-	Status     int    `json:"status",xorm:"status"`
-	Result     string `json:"result",xorm:"result"`
+	Id         string `json:"id" xorm:"pk"`
+	JobId      string `json:"jobId" xorm:"job_id"`
+	Name       string `json:"name" xorm:"name"`
+	Ip         string `json:"ip" xorm:"ip"`
+	Group      string `json:"group" xorm:"group"`
+	Cron       string `json:"cron" xorm:"cron"`
+	Target     string `json:"target" xorm:"target"`
+	Params     string `json:"params" xorm:"params"`
+	Mobile     string `json:"mobile" xorm:"mobile"`
+	Remark     string `json:"remark" xorm:"remark"`
+	CreateTime string `json:"createTime" xorm:"create_time"`
+	StartTime  string `json:"startTime" xorm:"start_time"`
+	FinishTime string `json:"finishTime" xorm:"finish_time"`
+	Times      int    `json:"times" xorm:"times"`
+	Status     int    `json:"status" xorm:"status"`
+	Result     string `json:"result" xorm:"result"`
 }
 
 type QueryExecuteSnapshotParam struct {

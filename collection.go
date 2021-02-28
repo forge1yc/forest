@@ -10,6 +10,7 @@ import (
 
 const (
 	JobExecuteStatusCollectionPath = "/forest/client/execute/snapshot/"
+	// 这里是为了收集执行状态
 )
 
 type JobCollection struct {
@@ -32,7 +33,7 @@ func NewJobCollection(node *JobNode) (c *JobCollection) {
 // watch
 func (c *JobCollection) watch() {
 
-	keyChangeEventResponse := c.node.etcd.WatchWithPrefixKey(JobExecuteStatusCollectionPath)
+	keyChangeEventResponse := c.node.etcd.WatchWithPrefixKey(JobExecuteStatusCollectionPath) // 就能一直看着了 // 所以下面的都是上报目录，而不是快照目录
 	log.Printf("the job collection success watch for path:%s ", JobExecuteStatusCollectionPath)
 	go func() {
 
@@ -41,7 +42,7 @@ func (c *JobCollection) watch() {
 			c.handleJobExecuteStatusCollectionEvent(event)
 		}
 
-	}()
+	}() // 这个函数执行完了，go 协程并不会结束，而是继续运行
 }
 
 // handle the job execute status
@@ -104,9 +105,9 @@ func (c *JobCollection) handleJobExecuteSnapshot(path string, snapshot *JobExecu
 	}
 
 	if exist {
-		c.handleUpdateJobExecuteSnapshot(path, snapshot)
+		c.handleUpdateJobExecuteSnapshot(path, snapshot) // 存在就直接更新
 	} else {
-		c.handleCreateJobExecuteSnapshot(path, snapshot)
+		c.handleCreateJobExecuteSnapshot(path, snapshot) // 不存在就创建快照
 	}
 
 }
@@ -127,7 +128,7 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 	}
 	if snapshot.Status == JobExecuteSnapshotDoingStatus && days >= 3 {
 		_ = c.node.etcd.Delete(path)
-	}
+	}  // 大于三天的为啥就删除了
 	_, err = c.node.engine.Insert(snapshot)
 	if err != nil {
 		log.Printf("err:%#v", err)
@@ -137,7 +138,7 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 // handle update job execute snapshot
 func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) {
 
-	if snapshot.Status == JobExecuteSnapshotUnkonwStatus || snapshot.Status == JobExecuteSnapshotErrorStatus || snapshot.Status == JobExecuteSnapshotSuccessStatus {
+	if snapshot.Status == JobExecuteSnapshotUnkonwStatus || snapshot.Status == JobExecuteSnapshotErrorStatus || snapshot.Status == JobExecuteSnapshotSuccessStatus { // 成功,失败,未知状态都删除？？？ 这里好像删除的上报的目录
 		_ = c.node.etcd.Delete(path)
 	}
 
@@ -152,7 +153,7 @@ func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *Jo
 		_ = c.node.etcd.Delete(path)
 	}
 
-	_, _ = c.node.engine.Where("id=?", snapshot.Id).Cols("status", "finish_time", "times", "result").Update(snapshot)
+	_, _ = c.node.engine.Where("id=?", snapshot.Id).Cols("status", "finish_time", "times", "result").Update(snapshot) // 更新也是更新数据库里的,mysql数据库也就只有这一个表而已
 
 }
 
