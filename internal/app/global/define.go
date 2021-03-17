@@ -56,3 +56,23 @@ const (
 	JobExecuteSnapshotUnkonwStatus  = 3
 	JobExecuteSnapshotErrorStatus   = -1
 )
+
+const ClientPathPrefix = "/forest/client/%s/clients/%s"
+const (
+	URegistryState = iota
+	RegistryState
+)
+
+const JobSnapshotPrefix = "/forest/client/snapshot/%s/%s/"
+const JobExecuteSnapshotPrefix = "/forest/client/execute/snapshot/%s/%s/"
+
+const (
+	// 执行中
+	JobExecuteDoingStatus = 1
+	// 执行成功
+	JobExecuteSuccessStatus = 2
+	// 未知
+	JobExecuteUkonwStatus = 3
+	// 执行失败
+	JobExecuteErrorStatus = -1
+)

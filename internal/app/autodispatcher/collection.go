@@ -1,6 +1,7 @@
-package app
+package autodispatcher
 
 import (
+	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 	"sync"
@@ -34,7 +35,7 @@ func NewJobCollection(node *JobNode) (c *JobCollection) {
 // watch
 func (c *JobCollection) watch() {
 
-	keyChangeEventResponse := c.node.etcd.WatchWithPrefixKey(JobExecuteStatusCollectionPath) // 就能一直看着了 // 所以下面的都是上报目录，而不是快照目录
+	keyChangeEventResponse := c.node.Etcd.WatchWithPrefixKey(JobExecuteStatusCollectionPath) // 就能一直看着了 // 所以下面的都是上报目录，而不是快照目录
 	log.Printf("the job collection success watch for path:%s ", JobExecuteStatusCollectionPath)
 	go func() {
 
@@ -47,9 +48,9 @@ func (c *JobCollection) watch() {
 }
 
 // handle the job execute status
-func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *KeyChangeEvent) {
+func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *ectd.KeyChangeEvent) {
 
-	if c.node.state == global.NodeFollowerState {
+	if c.node.State == global.NodeFollowerState {
 		return
 	}
 
@@ -65,7 +66,7 @@ func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *KeyChangeEv
 
 		if err != nil {
 			log.Warnf("UParkJobExecuteSnapshot:%s fail,err:%#v ", event.Value, err)
-			_ = c.node.etcd.Delete(event.Key)
+			_ = c.node.Etcd.Delete(event.Key)
 			return
 		}
 		c.handleJobExecuteSnapshot(event.Key, executeSnapshot)
@@ -117,7 +118,7 @@ func (c *JobCollection) handleJobExecuteSnapshot(path string, snapshot *JobExecu
 func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) {
 
 	if snapshot.Status == global.JobExecuteSnapshotUnkonwStatus || snapshot.Status == global.JobExecuteSnapshotErrorStatus || snapshot.Status == global.JobExecuteSnapshotSuccessStatus {
-		_ = c.node.etcd.Delete(path)
+		_ = c.node.Etcd.Delete(path)
 	}
 
 	dateTime, err := ParseInLocation(snapshot.CreateTime)
@@ -128,9 +129,9 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 
 	}
 	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {
-		_ = c.node.etcd.Delete(path)
+		_ = c.node.Etcd.Delete(path)
 	}  // 大于三天的为啥就删除了
-	_, err = c.node.engine.Insert(snapshot)
+	_, err = c.node.Engine.Insert(snapshot)
 	if err != nil {
 		log.Printf("err:%#v", err)
 	}
@@ -140,7 +141,7 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) {
 
 	if snapshot.Status == global.JobExecuteSnapshotUnkonwStatus || snapshot.Status == global.JobExecuteSnapshotErrorStatus || snapshot.Status == global.JobExecuteSnapshotSuccessStatus { // 成功,失败,未知状态都删除？？？ 这里好像删除的上报的目录
-		_ = c.node.etcd.Delete(path)
+		_ = c.node.Etcd.Delete(path)
 	}
 
 	dateTime, err := ParseInLocation(snapshot.CreateTime)
@@ -151,10 +152,10 @@ func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *Jo
 
 	}
 	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {
-		_ = c.node.etcd.Delete(path)
+		_ = c.node.Etcd.Delete(path)
 	}
 
-	_, _ = c.node.engine.Where("id=?", snapshot.Id).Cols("status", "finish_time", "times", "result").Update(snapshot) // 更新也是更新数据库里的,mysql数据库也就只有这一个表而已
+	_, _ = c.node.Engine.Where("id=?", snapshot.Id).Cols("status", "finish_time", "times", "result").Update(snapshot) // 更新也是更新数据库里的,mysql数据库也就只有这一个表而已
 
 }
 
@@ -167,7 +168,7 @@ func (c *JobCollection) checkExist(id string) (exist bool, err error) {
 
 	snapshot = new(JobExecuteSnapshot)
 
-	if exist, err = c.node.engine.Where("id=?", id).Get(snapshot); err != nil {
+	if exist, err = c.node.Engine.Where("id=?", id).Get(snapshot); err != nil {
 		return
 	}
 
@@ -186,7 +187,7 @@ func (c *JobCollection) loop() {
 		case <-timer.C:
 
 			timer.Reset(10 * time.Second)
-			keys, values, err := c.node.etcd.GetWithPrefixKeyLimit(key, 1000)
+			keys, values, err := c.node.Etcd.GetWithPrefixKeyLimit(key, 1000)
 			if err != nil {
 
 				log.Warnf("collection loop err:%v ", err)
@@ -205,7 +206,7 @@ func (c *JobCollection) loop() {
 
 				if err != nil {
 					log.Warnf("UParkJobExecuteSnapshot:%s fail,err:%#v ", values[pos], err)
-					_ = c.node.etcd.Delete(string(keys[pos]))
+					_ = c.node.Etcd.Delete(string(keys[pos]))
 					continue
 				}
 

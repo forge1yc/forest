@@ -1,4 +1,4 @@
-package app
+package autodispatcher
 
 import (
 	"encoding/json"

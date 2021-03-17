@@ -2,7 +2,8 @@ package main
 
 import (
 	"flag"
-	"github.com/busgo/forest/internal/app"
+	"github.com/busgo/forest/internal/app/autodispatcher"
+	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/prometheus/common/log"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ const (
 
 func main() {
 
-	ip := app.GetLocalIpAddress()
+	ip := autodispatcher.GetLocalIpAddress()
 	log.Info("ip ",ip)
 	if ip == "" {
 		log.Fatal("has no get the ip address")
@@ -39,13 +40,13 @@ func main() {
 	endpoint := strings.Split(*endpoints, ",")
 	dialTime := time.Duration(*etcdDialTime) * time.Second
 
-	etcd, err := app.NewEtcd(endpoint, dialTime)
+	etcd, err := ectd.NewEtcd(endpoint, dialTime)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// 每一个节点具有所有的沟通能力，都被封装好了
-	node, err := app.NewJobNode(ip, etcd, *httpAddress, *dbUrl)
+	node, err := autodispatcher.NewJobNode(ip, etcd, *httpAddress, *dbUrl)
 	if err != nil {
 
 		log.Fatal(err)

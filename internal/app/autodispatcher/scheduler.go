@@ -1,4 +1,4 @@
-package app
+package autodispatcher
 
 import (
 	"github.com/busgo/forest/internal/app/global"
@@ -12,7 +12,7 @@ import (
 type JobScheduler struct {
 	node          *JobNode
 	eventChan     chan *JobChangeEvent
-	schedulePlans map[string]*SchedulePlan
+	SchedulePlans map[string]*SchedulePlan
 	lk            *sync.RWMutex
 	syncStatus    bool
 }
@@ -22,7 +22,7 @@ func NewJobScheduler(node *JobNode) (sch *JobScheduler) {
 	sch = &JobScheduler{
 		node:          node,
 		eventChan:     make(chan *JobChangeEvent, 250),
-		schedulePlans: make(map[string]*SchedulePlan),
+		SchedulePlans: make(map[string]*SchedulePlan),
 		lk:            &sync.RWMutex{},
 		syncStatus:    false,
 	}
@@ -66,7 +66,7 @@ func (sch *JobScheduler) handleJobUpdateEvent(event *JobChangeEvent) {
 
 	jobConf := event.Conf
 
-	if _, ok = sch.schedulePlans[jobConf.Id]; !ok {
+	if _, ok = sch.SchedulePlans[jobConf.Id]; !ok {
 		log.Warnf("the job conf:%#v not  exist", jobConf)
 		log.Warnf("the job conf:%#v change job create event", jobConf)
 
@@ -81,7 +81,7 @@ func (sch *JobScheduler) handleJobUpdateEvent(event *JobChangeEvent) {
 	if jobConf.Status == global.JobStopStatus {
 
 		log.Warnf("the job conf:%#v status is stop must delete from the schedule plan ", jobConf)
-		delete(sch.schedulePlans, jobConf.Id)
+		delete(sch.SchedulePlans, jobConf.Id)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (sch *JobScheduler) handleJobUpdateEvent(event *JobChangeEvent) {
 	}
 
 	// update the schedule plan
-	sch.schedulePlans[jobConf.Id] = plan
+	sch.SchedulePlans[jobConf.Id] = plan
 	log.Printf("the job conf:%#v update a new schedule plan:%#v", jobConf, plan)
 }
 
@@ -119,7 +119,7 @@ func (sch *JobScheduler) handleJobDeleteEvent(event *JobChangeEvent) {
 	)
 	jobConf := event.Conf
 
-	if plan, ok = sch.schedulePlans[jobConf.Id]; !ok {
+	if plan, ok = sch.SchedulePlans[jobConf.Id]; !ok {
 		log.Printf("the job conf:%#v not  exist", jobConf)
 		return
 	}
@@ -129,7 +129,7 @@ func (sch *JobScheduler) handleJobDeleteEvent(event *JobChangeEvent) {
 		return
 	}
 	log.Warnf("the job conf:%#v delete a  schedule plan:%#v", jobConf, plan)
-	delete(sch.schedulePlans, jobConf.Id)
+	delete(sch.SchedulePlans, jobConf.Id)
 
 }
 
@@ -142,7 +142,7 @@ func (sch *JobScheduler) createJobPlan(event *JobChangeEvent) { // job创建
 
 	jobConf := event.Conf
 
-	if _, ok := sch.schedulePlans[jobConf.Id]; ok {
+	if _, ok := sch.SchedulePlans[jobConf.Id]; ok {
 		log.Warnf("the job conf:%#v exist", jobConf)
 		return
 	}
@@ -173,7 +173,7 @@ func (sch *JobScheduler) createJobPlan(event *JobChangeEvent) { // job创建
 		NextTime: schedule.Next(time.Now()),
 	}
 
-	sch.schedulePlans[jobConf.Id] = plan
+	sch.SchedulePlans[jobConf.Id] = plan
 
 	log.Printf("the job conf:%#v create a new schedule plan:%#v", jobConf, plan)
 }
@@ -216,7 +216,7 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 	var (
 		first bool
 	)
-	if len(sch.schedulePlans) == 0 {
+	if len(sch.SchedulePlans) == 0 {
 
 		return time.Second
 	}
@@ -224,10 +224,10 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 	now := time.Now()
 	leastTime := new(time.Time)
 	first = true
-	for _, plan := range sch.schedulePlans { // 如果有就一直调度,怎么还是单机啊，和我想的有点不一样,1s 调度一次
+	for _, plan := range sch.SchedulePlans { // 如果有就一直调度,怎么还是单机啊，和我想的有点不一样,1s 调度一次
 
 		scheduleTime := plan.NextTime
-		if scheduleTime.Before(now) && sch.node.state == global.NodeLeaderState { // 只有master才可以调度
+		if scheduleTime.Before(now) && sch.node.State == global.NodeLeaderState { // 只有master才可以调度
 			log.Infof("schedule execute the plan:%#v", plan)
 
 			snapshot := &JobSnapshot{
@@ -242,7 +242,7 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 				Remark:     plan.Remark,
 				CreateTime: ToDateString(now),
 			}
-			sch.node.exec.pushSnapshot(snapshot) // 执行计划了，去找对应的集群
+			sch.node.Exec.pushSnapshot(snapshot) // 执行计划了，去找对应的集群
 		}
 		nextTime := plan.Schedule.Next(now) // 这里执行了吗
 		plan.NextTime = nextTime
@@ -313,7 +313,7 @@ func (sch *JobScheduler) trySync() {
 	}()
 
 	// load all job conf list
-	if jobConfs, err = sch.node.manager.jobList(); err != nil { // 这里是最新的jobConfs，目标是让所有的调度节点都同步最新的状态
+	if jobConfs, err = sch.node.Manager.JobList(); err != nil { // 这里是最新的jobConfs，目标是让所有的调度节点都同步最新的状态
 		return
 	}
 
@@ -329,11 +329,11 @@ func (sch *JobScheduler) trySync() {
 	}
 
 	// sync not receive the job conf delete event
-	for id, plan := range sch.schedulePlans {
+	for id, plan := range sch.SchedulePlans {
 
 		if !sch.existPlan(id, jobConfs) { // 只有相符合的才有效
 			log.Warnf("sync the schedule plan %v must delete", plan)
-			delete(sch.schedulePlans, id) // 这里和最新的做同步
+			delete(sch.SchedulePlans, id) // 这里和最新的做同步
 		}
 	}
 
@@ -366,7 +366,7 @@ func (sch *JobScheduler) handleJobConfSync(conf *JobConf) {
 		plan  *SchedulePlan
 	)
 
-	if plan, exist = sch.schedulePlans[conf.Id]; !exist {// follower do
+	if plan, exist = sch.SchedulePlans[conf.Id]; !exist { // follower do
 
 		if conf.Status == global.JobRunningStatus { // 正在执行意味着删除了，所以从新创建？？？
 			log.Warnf("sync the schedule plan the job conf: %v must create", conf)

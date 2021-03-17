@@ -1,35 +1,40 @@
-package app
+package autodispatcher
 
 import (
-	"context"
-	"github.com/coreos/etcd/clientv3"
 	"github.com/robfig/cron"
 	"time"
 )
 
 
 
+//type WatchkeyChangeResponse interface {
+//	Read() chan *interface{}
+//}
+
+
 // key 变化事件
-type KeyChangeEvent struct {
-	Type  int
-	Key   string
-	Value []byte
-}
-
-// 监听key 变化响应
-type WatchKeyChangeResponse struct {
-	Event      chan *KeyChangeEvent // 这个很重要，触发各种事件
-	CancelFunc context.CancelFunc
-	Watcher    clientv3.Watcher
-}
-
-type TxResponse struct {
-	Success bool
-	LeaseID clientv3.LeaseID
-	Lease   clientv3.Lease
-	Key     string
-	Value   string
-}
+//type KeyChangeEvent struct {
+//	Type  int
+//	Key   string
+//	Value []byte
+//}
+//
+//
+//
+//// 监听key 变化响应
+//type WatchKeyChangeResponse struct {
+//	Event      chan *KeyChangeEvent // 这个很重要，触发各种事件
+//	CancelFunc context.CancelFunc
+//	Watcher    clientv3.Watcher
+//}
+//
+//type TxResponse struct {
+//	Success bool
+//	LeaseID clientv3.LeaseID
+//	Lease   clientv3.Lease
+//	Key     string
+//	Value   string
+//}
 
 type JobClientDeleteEvent struct {
 	Client *Client

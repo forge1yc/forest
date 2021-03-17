@@ -1,4 +1,4 @@
-package app
+package autodispatcher
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 type JobSnapshotFailOver struct {
 	node                   *JobNode
-	deleteClientEventChans chan *JobClientDeleteEvent
+	DeleteClientEventChans chan *JobClientDeleteEvent
 }
 
 // new job snapshot fail over
@@ -19,7 +19,7 @@ func NewJobSnapshotFailOver(node *JobNode) (f *JobSnapshotFailOver) {
 
 	f = &JobSnapshotFailOver{
 		node:                   node,
-		deleteClientEventChans: make(chan *JobClientDeleteEvent, 50),
+		DeleteClientEventChans: make(chan *JobClientDeleteEvent, 50),
 	}
 
 	f.loop()
@@ -32,7 +32,7 @@ func (f *JobSnapshotFailOver) loop() {
 
 	go func() {
 
-		for ch := range f.deleteClientEventChans {
+		for ch := range f.DeleteClientEventChans {
 			f.handleJobClientDeleteEvent(ch)
 		}
 	}()
@@ -50,8 +50,8 @@ func (f *JobSnapshotFailOver) handleJobClientDeleteEvent(event *JobClientDeleteE
 	)
 
 RETRY:
-	prefixKey := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, event.Client.name)
-	if keys, values, err = f.node.etcd.GetWithPrefixKey(prefixKey); err != nil {
+	prefixKey := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, event.Client.Name)
+	if keys, values, err = f.node.Etcd.GetWithPrefixKey(prefixKey); err != nil {
 		log.Errorf("the fail client:%v for path:%s,error must retry", event.Client, prefixKey)
 		time.Sleep(time.Second) // 失败了就一直产生尝试吗
 		goto RETRY
@@ -70,12 +70,12 @@ RETRY:
 			continue
 		}
 
-		to := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, client.name)
+		to := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, client.Name)
 
 		from := string(keys[pos])
 		value := string(values[pos])
 		//  transfer the kv
-		if success, _ = f.node.etcd.Transfer(from, to, value); success {
+		if success, _ = f.node.Etcd.Transfer(from, to, value); success {
 			log.Infof("the fail client:%v for path:%s success transfer form %s to %s", event.Client, prefixKey, from, to)  // 这里从一个点，转移到另一个点有点没有想明白
 		}
 

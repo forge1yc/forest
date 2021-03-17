@@ -1,16 +1,15 @@
-package etcd
+package ectd
 
 import (
-	"github.com/busgo/forest/internal/app"
 	"log"
 	"sync"
 	"testing"
 	"time"
 )
 
-func InitEtcd() *app.Etcd {
+func InitEtcd() *Etcd {
 
-	etcd, err := app.NewEtcd([]string{"127.0.0.1:2379"}, time.Second*5)
+	etcd, err := NewEtcd([]string{"127.0.0.1:2379"}, time.Second*5)
 	if err != nil {
 		log.Fatal(err)
 	}

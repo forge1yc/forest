@@ -1,7 +1,8 @@
-package app
+package autodispatcher
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/busgo/forest/internal/app/global"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/xorm"
@@ -20,17 +21,17 @@ type JobNode struct {
 	id           string
 	registerPath string
 	electPath    string
-	etcd         *Etcd
-	state        int
-	apiAddress   string
+	Etcd         *ectd.Etcd
+	State        int
+	ApiAddress   string
 	api          *JobAPi
-	manager      *JobManager
-	scheduler    *JobScheduler // 这是下面lister 的实例
-	groupManager *JobGroupManager
-	exec         *JobExecutor
-	engine       *xorm.Engine
+	Manager      *JobManager
+	Scheduler    *JobScheduler // 这是下面lister 的实例
+	GroupManager *JobGroupManager
+	Exec         *JobExecutor
+	Engine       *xorm.Engine
 	collection   *JobCollection
-	failOver     *JobSnapshotFailOver
+	FailOver     *JobSnapshotFailOver
 	listeners    []NodeStateChangeListener
 	close        chan bool
 }
@@ -41,7 +42,7 @@ type NodeStateChangeListener interface {
 }
 
 
-func NewJobNode(id string, etcd *Etcd, httpAddress, dbUrl string) (node *JobNode, err error) {
+func NewJobNode(id string, etcd *ectd.Etcd, httpAddress, dbUrl string) (node *JobNode, err error) {
 	// 这里只有ip是特殊的，每个job节点都不一样
 
 	// 每个节点可以单独连接数据库
@@ -54,29 +55,29 @@ func NewJobNode(id string, etcd *Etcd, httpAddress, dbUrl string) (node *JobNode
 		id:           id, // 这个id是ip    job就是分布式节点
 		registerPath: fmt.Sprintf("%s%s", global.JobNodePath, id),
 		electPath:    global.JobNodeElectPath,
-		etcd:         etcd, // etcd基本都是一样的
-		state:        global.NodeFollowerState,
-		apiAddress:   httpAddress, // :2555
+		Etcd:         etcd, // etcd基本都是一样的
+		State:        global.NodeFollowerState,
+		ApiAddress:   httpAddress, // :2555
 		close:        make(chan bool),
-		engine:       engine, // 单独连接
+		Engine:       engine, // 单独连接
 		listeners:    make([]NodeStateChangeListener, 0),
 	}
 
-	node.failOver = NewJobSnapshotFailOver(node) // client故障转移
+	node.FailOver = NewJobSnapshotFailOver(node) // client故障转移
 
 	node.collection = NewJobCollection(node) // 收集工作执行状态
 
 	node.initNode()
 
 	// create job executor
-	node.exec = NewJobExecutor(node)
+	node.Exec = NewJobExecutor(node)
 	// create  group manager
-	node.groupManager = NewJobGroupManager(node)
+	node.GroupManager = NewJobGroupManager(node)
 
-	node.scheduler = NewJobScheduler(node) //这个是时间调度器
+	node.Scheduler = NewJobScheduler(node) //这个是时间调度器
 
 	// create job manager
-	node.manager = NewJobManager(node)
+	node.Manager = NewJobManager(node)
 
 	// create a job http api
 	node.api = NewJobAPi(node)
@@ -86,13 +87,13 @@ func NewJobNode(id string, etcd *Etcd, httpAddress, dbUrl string) (node *JobNode
 
 func (node *JobNode) addListeners() {
 
-	node.listeners = append(node.listeners, node.scheduler)
+	node.listeners = append(node.listeners, node.Scheduler)
 
 }
 
 func (node *JobNode) changeState(state int) {
 
-	node.state = state
+	node.State = state
 
 	if len(node.listeners) == 0 {
 
@@ -127,8 +128,8 @@ func (node *JobNode) initNode() {
 // bootstrap
 func (node *JobNode) Bootstrap() {
 
-	go node.groupManager.loopLoadGroups() // 这里多余了
-	go node.manager.loopLoadJobConf()
+	go node.GroupManager.LoopLoadGroups() // 这里多余了
+	go node.Manager.LoopLoadJobConf()
 
 	<-node.close
 }
@@ -141,7 +142,7 @@ func (node *JobNode) Close() {
 // watch the register job node
 func (node *JobNode) watchRegisterJobNode() {
 
-	keyChangeEventResponse := node.etcd.Watch(node.registerPath)
+	keyChangeEventResponse := node.Etcd.Watch(node.registerPath)
 
 	go func() {
 
@@ -153,7 +154,7 @@ func (node *JobNode) watchRegisterJobNode() {
 }
 
 // handle the register job node change event
-func (node *JobNode) handleRegisterJobNodeChangeEvent(changeEvent *KeyChangeEvent) {
+func (node *JobNode) handleRegisterJobNodeChangeEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
@@ -168,9 +169,9 @@ func (node *JobNode) handleRegisterJobNodeChangeEvent(changeEvent *KeyChangeEven
 	}
 }
 
-func (node *JobNode) registerJobNode() (txResponse *TxResponse, err error) {
+func (node *JobNode) registerJobNode() (txResponse *ectd.TxResponse, err error) {
 
-	return node.etcd.TxKeepaliveWithTTL(node.registerPath, node.id, global.TTL)
+	return node.Etcd.TxKeepaliveWithTTL(node.registerPath, node.id, global.TTL)
 }
 
 // loop register the job node
@@ -179,7 +180,7 @@ func (node *JobNode) loopRegisterJobNode() {
 RETRY:
 
 	var (
-		txResponse *TxResponse
+		txResponse *ectd.TxResponse
 		err        error
 	)
 	if txResponse, err = node.registerJobNode(); err != nil {
@@ -203,16 +204,16 @@ RETRY:
 }
 
 // elect the leader
-func (node *JobNode) elect() (txResponse *TxResponse, err error) {
+func (node *JobNode) elect() (txResponse *ectd.TxResponse, err error) {
 
-	return node.etcd.TxKeepaliveWithTTL(node.electPath, node.id, global.TTL) // 这就算是leader了，之哟啊成功
+	return node.Etcd.TxKeepaliveWithTTL(node.electPath, node.id, global.TTL) // 这就算是leader了，之哟啊成功
 
 }
 
 // watch the job node elect path
 func (node *JobNode) watchElectPath() {
 
-	keyChangeEventResponse := node.etcd.Watch(node.electPath)
+	keyChangeEventResponse := node.Etcd.Watch(node.electPath)
 
 	go func() {
 
@@ -225,7 +226,7 @@ func (node *JobNode) watchElectPath() {
 }
 
 // handle the job node leader change event
-func (node *JobNode) handleElectLeaderChangeEvent(changeEvent *KeyChangeEvent) {
+func (node *JobNode) handleElectLeaderChangeEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
@@ -245,7 +246,7 @@ func (node *JobNode) loopStartElect() {
 
 RETRY:
 	var (
-		txResponse *TxResponse
+		txResponse *ectd.TxResponse
 		err        error
 	)
 	if txResponse, err = node.elect(); err != nil {

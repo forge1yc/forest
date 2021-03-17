@@ -1,9 +1,10 @@
-package app
+package autodispatcher
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/labstack/gommon/log"
@@ -20,7 +21,7 @@ import (
 
 type JobGroupManager struct {
 	node   *JobNode
-	groups map[string]*Group
+	Groups map[string]*Group
 	lk     *sync.RWMutex
 }
 
@@ -28,13 +29,13 @@ func NewJobGroupManager(node *JobNode) (mgr *JobGroupManager) {
 
 	mgr = &JobGroupManager{
 		node:   node,
-		groups: make(map[string]*Group),
+		Groups: make(map[string]*Group),
 		lk:     &sync.RWMutex{},
 	}
 
 	go mgr.watchGroupPath()  // 内部线程阻塞监视
 
-	go mgr.loopLoadGroups()
+	go mgr.LoopLoadGroups()
 
 	return
 
@@ -44,7 +45,7 @@ func NewJobGroupManager(node *JobNode) (mgr *JobGroupManager) {
 func (mgr *JobGroupManager) watchGroupPath() { // 阻塞监视 // 这种阻塞监视的都需要用go起
 
 	// 这里查看所有的
-	keyChangeEventResponse := mgr.node.etcd.WatchWithPrefixKey(global.GroupConfPath)
+	keyChangeEventResponse := mgr.node.Etcd.WatchWithPrefixKey(global.GroupConfPath)
 	// 下面可以用for + switch 判断
 	for ch := range keyChangeEventResponse.Event {
 		mgr.handleGroupChangeEvent(ch) // 阻塞一直等待事件的到来
@@ -52,7 +53,7 @@ func (mgr *JobGroupManager) watchGroupPath() { // 阻塞监视 // 这种阻塞�
 
 }
 
-func (mgr *JobGroupManager) loopLoadGroups() {
+func (mgr *JobGroupManager) LoopLoadGroups() {
 
 RETRY:
 	var (
@@ -60,7 +61,7 @@ RETRY:
 		values [][]byte
 		err    error
 	)
-	if keys, values, err = mgr.node.etcd.GetWithPrefixKey(global.GroupConfPath); err != nil { // 所以之前必须有一个etcd管理，来注册所有的节点信息，在前面应该有配置,node那里
+	if keys, values, err = mgr.node.Etcd.GetWithPrefixKey(global.GroupConfPath); err != nil { // 所以之前必须有一个etcd管理，来注册所有的节点信息，在前面应该有配置,node那里
 
 		goto RETRY // 拿不到集群的就一直尝试，这里是拿所有集群，所以每个节点都要拿到所有的信息
 	}
@@ -87,12 +88,12 @@ func (mgr *JobGroupManager) addGroup(name, path string) {
 	mgr.lk.Lock()
 	defer mgr.lk.Unlock()
 
-	if _, ok := mgr.groups[path]; ok {
+	if _, ok := mgr.Groups[path]; ok {
 
 		return // 已经存在就返回
 	}
 	group := NewGroup(name, path, mgr.node) // 添加一个group之后，后面就自动监控节点了，这里可以先写在define里面，之后看情况考虑是否添加到service.conf 里面
-	mgr.groups[path] = group
+	mgr.Groups[path] = group
 	log.Infof("add a new group:%s,for path:%s", name, path)
 
 }
@@ -107,7 +108,7 @@ func (mgr *JobGroupManager) deleteGroup(path string) {
 	mgr.lk.Lock()
 	defer mgr.lk.Unlock()
 
-	if group, ok = mgr.groups[path]; ok {
+	if group, ok = mgr.Groups[path]; ok {
 
 		return
 	}
@@ -115,13 +116,13 @@ func (mgr *JobGroupManager) deleteGroup(path string) {
 	// cancel watch the clients
 	_ = group.watcher.Close()
 	group.cancelFunc()
-	delete(mgr.groups, path)
+	delete(mgr.Groups, path)
 
 	log.Infof("delete a  group:%s,for path:%s", group.name, path)
 }
 
 // handle the group change event
-func (mgr *JobGroupManager) handleGroupChangeEvent(changeEvent *KeyChangeEvent) {
+func (mgr *JobGroupManager) handleGroupChangeEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
@@ -135,7 +136,7 @@ func (mgr *JobGroupManager) handleGroupChangeEvent(changeEvent *KeyChangeEvent) 
 	}
 }
 
-func (mgr *JobGroupManager) handleGroupCreateEvent(changeEvent *KeyChangeEvent) {
+func (mgr *JobGroupManager) handleGroupCreateEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	groupConf, err := UParkGroupConf(changeEvent.Value)
 	if err != nil {
@@ -148,14 +149,14 @@ func (mgr *JobGroupManager) handleGroupCreateEvent(changeEvent *KeyChangeEvent) 
 
 }
 
-func (mgr *JobGroupManager) handleGroupDeleteEvent(changeEvent *KeyChangeEvent) {
+func (mgr *JobGroupManager) handleGroupDeleteEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	path := changeEvent.Key
 
 	mgr.deleteGroup(path)
 }
 
-func (mgr *JobGroupManager) selectClient(name string) (client *Client, err error) {
+func (mgr *JobGroupManager) SelectClient(name string) (client *Client, err error) {
 
 	var (
 		group *Group
@@ -163,7 +164,7 @@ func (mgr *JobGroupManager) selectClient(name string) (client *Client, err error
 	)
 
 	// 这里设置的是可以自选集群，其实挺好的，然后再集群里面找
-	if group, ok = mgr.groups[global.GroupConfPath+name]; !ok {
+	if group, ok = mgr.Groups[global.GroupConfPath+name]; !ok {
 		err = errors.New(fmt.Sprintf("the group:%s not found", name))
 		return
 	}
@@ -177,7 +178,7 @@ type Group struct {
 	name       string
 	node       *JobNode
 	watchPath  string
-	clients    map[string]*Client
+	Clients    map[string]*Client
 	watcher    clientv3.Watcher
 	cancelFunc context.CancelFunc
 	lk         *sync.RWMutex
@@ -191,7 +192,7 @@ func NewGroup(name, path string, node *JobNode) (group *Group) {
 		path:      path,
 		node:      node,
 		watchPath: fmt.Sprintf(global.ClientPath, name), // name is ip
-		clients:   make(map[string]*Client),
+		Clients:   make(map[string]*Client),
 		lk:        &sync.RWMutex{},
 	}
 
@@ -205,7 +206,7 @@ func NewGroup(name, path string, node *JobNode) (group *Group) {
 // watch the client path
 func (group *Group) watchClientPath() { // 这里监控是否有集群下的节点变化
 
-	keyChangeEventResponse := group.node.etcd.WatchWithPrefixKey(group.watchPath)
+	keyChangeEventResponse := group.node.Etcd.WatchWithPrefixKey(group.watchPath)
 	group.watcher = keyChangeEventResponse.Watcher
 	group.cancelFunc = keyChangeEventResponse.CancelFunc
 	for ch := range keyChangeEventResponse.Event {
@@ -228,7 +229,7 @@ RETRY:
 
 	// 这里能这样做是因为节点初始化的时候都注册进去了
 	prefix := fmt.Sprintf(global.ClientPath, group.name)
-	if keys, values, err = group.node.etcd.GetWithPrefixKey(prefix); err != nil { // 这里面是所有的ip，也就是真实的主机
+	if keys, values, err = group.node.Etcd.GetWithPrefixKey(prefix); err != nil { // 这里面是所有的ip，也就是真实的主机
 
 		time.Sleep(time.Second)
 		goto RETRY
@@ -252,7 +253,7 @@ RETRY:
 }
 
 // handle the client change event
-func (group *Group) handleClientChangeEvent(changeEvent *KeyChangeEvent) {
+func (group *Group) handleClientChangeEvent(changeEvent *ectd.KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
@@ -274,17 +275,17 @@ func (group *Group) addClient(name, path string) {
 
 	group.lk.Lock()
 	defer group.lk.Unlock()
-	if _, ok := group.clients[path]; ok {
+	if _, ok := group.Clients[path]; ok {
 		log.Warnf("name:%s,path:%s,the client exist", name, path)
 		return
 	}
 
 	client := &Client{
-		name: name,
-		path: path,
+		Name: name,
+		Path: path,
 	}
 
-	group.clients[path] = client // 这个path 是
+	group.Clients[path] = client // 这个path 是
 	log.Printf("add a new client for path:%s", path)
 
 }
@@ -298,17 +299,17 @@ func (group *Group) deleteClient(path string) {
 	)
 	group.lk.Lock()
 	defer group.lk.Unlock()
-	if client, ok = group.clients[path]; !ok {
+	if client, ok = group.Clients[path]; !ok {
 		log.Warnf("path:%s,the client not  exist", path)
 		return
 	}
 
-	delete(group.clients, path)
+	delete(group.Clients, path)
 	log.Printf("delete a  client for path:%s", path)
 
 	// fail over
-	if group.node.state == global.NodeLeaderState {
-		group.node.failOver.deleteClientEventChans <- &JobClientDeleteEvent{Group: group, Client: client}
+	if group.node.State == global.NodeLeaderState {
+		group.node.FailOver.DeleteClientEventChans <- &JobClientDeleteEvent{Group: group, Client: client}
 	}
 
 }
@@ -317,18 +318,18 @@ func (group *Group) selectClient() (client *Client, err error) {
 	group.lk.RLock() // 锁一下怕 同时被选择吗,怕一个客户端同时
 	defer group.lk.RUnlock()
 
-	if len(group.clients) == 0 { // 初始化的时候一个集群下面有多少都被添加进去了
+	if len(group.Clients) == 0 { // 初始化的时候一个集群下面有多少都被添加进去了
 		err = errors.New(fmt.Sprintf("the group:%s,has no client to select", group.name))
 		return
 	}
 
-	num := len(group.clients)
+	num := len(group.Clients)
 
 	pos := rand.Intn(num) //就是为了随机选择一个client，client 带ip
 
 	index := 0
 
-	for _, c := range group.clients { // 但是为啥不用这里的索引呢
+	for _, c := range group.Clients { // 但是为啥不用这里的索引呢
 
 		if index == pos {
 
@@ -344,6 +345,6 @@ func (group *Group) selectClient() (client *Client, err error) {
 
 // client
 type Client struct {
-	name string
-	path string
+	Name string
+	Path string
 }

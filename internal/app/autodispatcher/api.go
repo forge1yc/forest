@@ -1,4 +1,4 @@
-package app
+package autodispatcher
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func NewJobAPi(node *JobNode) (api *JobAPi) {
 	e.POST("/snapshot/delete", api.snapshotDelete)
 	e.POST("/execute/snapshot/list", api.executeSnapshotList)
 	go func() {
-		e.Logger.Fatal(e.Start(node.apiAddress)) // 这里就开始无限执行了 // 如果这个东西放到最后就不需要这样了，可以直接运行，自己就会阻塞无限循环，如果放到中间，就必须进行协程运行。
+		e.Logger.Fatal(e.Start(node.ApiAddress)) // 这里就开始无限执行了 // 如果这个东西放到最后就不需要这样了，可以直接运行，自己就会阻塞无限循环，如果放到中间，就必须进行协程运行。
 	}()
 	api.echo = e
 	return
@@ -89,7 +89,7 @@ func (api *JobAPi) AddJob(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	if err = api.node.manager.AddJob(jobConf); err != nil {
+	if err = api.node.Manager.AddJob(jobConf); err != nil {
 		message = err.Error()
 		goto ERROR
 	}
@@ -146,7 +146,7 @@ func (api *JobAPi) editJob(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	if err = api.node.manager.editJob(jobConf); err != nil {
+	if err = api.node.Manager.EditJob(jobConf); err != nil {
 		message = err.Error()
 		goto ERROR
 	}
@@ -164,7 +164,7 @@ func (api *JobAPi) jobList(context echo.Context) (err error) {
 		jobConfs []*JobConf
 	)
 
-	if jobConfs, err = api.node.manager.jobList(); err != nil {
+	if jobConfs, err = api.node.Manager.JobList(); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 	return context.JSON(http.StatusOK, Result{Code: 0, Data: jobConfs, Message: "查询成成功"})
@@ -189,7 +189,7 @@ func (api *JobAPi) deleteJob(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	if err = api.node.manager.deleteJob(jobConf); err != nil {
+	if err = api.node.Manager.DeleteJob(jobConf); err != nil {
 		message = err.Error()
 		goto ERROR
 	}
@@ -225,7 +225,7 @@ func (api *JobAPi) addGroup(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	if err = api.node.manager.addGroup(groupConf); err != nil {
+	if err = api.node.Manager.AddGroup(groupConf); err != nil {
 		message = err.Error()
 		goto ERROR
 	}
@@ -243,7 +243,7 @@ func (api *JobAPi) groupList(context echo.Context) (err error) {
 		groupConfs []*GroupConf
 	)
 
-	if groupConfs, err = api.node.manager.groupList(); err != nil {
+	if groupConfs, err = api.node.Manager.GroupList(); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 	return context.JSON(http.StatusOK, Result{Code: 0, Data: groupConfs, Message: "查询成成功"})
@@ -259,11 +259,11 @@ func (api *JobAPi) nodeList(context echo.Context) (err error) {
 		nodeNames []string
 	)
 
-	if nodeNames, err = api.node.manager.nodeList(); err != nil {
+	if nodeNames, err = api.node.Manager.NodeList(); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 
-	if leader, err = api.node.etcd.Get(global.JobNodeElectPath); err != nil {
+	if leader, err = api.node.Etcd.Get(global.JobNodeElectPath); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 
@@ -292,7 +292,7 @@ func (api *JobAPi) planList(context echo.Context) (err error) {
 	var (
 		plans []*SchedulePlan
 	)
-	schedulePlans := api.node.scheduler.schedulePlans
+	schedulePlans := api.node.Scheduler.SchedulePlans
 	if len(schedulePlans) == 0 {
 
 		return context.JSON(http.StatusOK, Result{Code: 0, Data: plans})
@@ -331,16 +331,16 @@ func (api *JobAPi) clientList(context echo.Context) (err error) {
 		goto ERROR
 	}
 	groupPath = fmt.Sprintf("%s%s", global.GroupConfPath, query.Group)
-	if group = api.node.groupManager.groups[groupPath]; group == nil {
+	if group = api.node.GroupManager.Groups[groupPath]; group == nil {
 		message = "此任务集群不存在"
 		goto ERROR
 	}
 
 	clients = make([]*JobClient, 0)
 
-	for _, c := range group.clients {
+	for _, c := range group.Clients {
 
-		clients = append(clients, &JobClient{Name: c.name, Path: c.path, Group: query.Group})
+		clients = append(clients, &JobClient{Name: c.Name, Path: c.Path, Group: query.Group})
 	}
 
 	return context.JSON(http.StatusOK, Result{Code: 0, Data: clients, Message: "查询成成功"})
@@ -378,7 +378,7 @@ func (api *JobAPi) snapshotList(context echo.Context) (err error) {
 		prefix = fmt.Sprintf(global.JobSnapshotGroupPath, query.Group)
 	} // 这里是为了添加筛选条件,前端传过来的
 
-	if keys, values, err = api.node.etcd.GetWithPrefixKeyLimit(prefix, 500); err != nil { // 这里限制500
+	if keys, values, err = api.node.Etcd.GetWithPrefixKeyLimit(prefix, 500); err != nil { // 这里限制500
 		message = err.Error()
 		goto ERROR
 	}
@@ -431,7 +431,7 @@ func (api *JobAPi) snapshotDelete(context echo.Context) (err error) {
 
 	key = fmt.Sprintf(global.JobClientSnapshotPath, query.Group, query.Ip)
 	key = fmt.Sprintf("%s/%s", key, query.Id)
-	if err = api.node.etcd.Delete(key); err != nil {
+	if err = api.node.Etcd.Delete(key); err != nil {
 		message = err.Error()
 		goto ERROR
 	}
@@ -467,8 +467,8 @@ func (api *JobAPi) executeSnapshotList(context echo.Context) (err error) {
 	}
 
 	snapshots = make([]*JobExecuteSnapshot, 0)
-	where = api.node.engine.Where("1=1")
-	queryWhere = api.node.engine.Where("1=1")
+	where = api.node.Engine.Where("1=1")
+	queryWhere = api.node.Engine.Where("1=1")
 	if query.Id != "" {
 		where.And("id=?", query.Id)
 		queryWhere.And("id=?", query.Id)
@@ -546,7 +546,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// 查询任务配置
-	if value, err = api.node.etcd.Get(global.JobConfPath + conf.Id); err != nil {
+	if value, err = api.node.Etcd.Get(global.JobConfPath + conf.Id); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: "查询任务配置出现异常:" + err.Error()})
 	}
 
@@ -561,12 +561,12 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// select a execute  job client for group
-	if client, err = api.node.groupManager.selectClient(conf.Group); err != nil {
+	if client, err = api.node.GroupManager.SelectClient(conf.Group); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: "没有找到此要执行的任务作业节点"})
 	}
 
 	// build the job snapshot path
-	snapshotPath = fmt.Sprintf(global.JobClientSnapshotPath, conf.Group, client.name)
+	snapshotPath = fmt.Sprintf(global.JobClientSnapshotPath, conf.Group, client.Name)
 
 	// build job snapshot
 	snapshotId := GenerateSerialNo() + conf.Id
@@ -574,7 +574,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 		Id:         snapshotId,
 		JobId:      conf.Id,
 		Name:       conf.Name,
-		Ip:         client.name,
+		Ip:         client.Name,
 		Group:      conf.Group,
 		Cron:       conf.Cron,
 		Target:     conf.Target,
@@ -591,7 +591,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// dispatch the job snapshot the client
-	if success, _, err = api.node.etcd.PutNotExist(snapshotPath, string(value)); err != nil { // 这里一定会执行,仔细找下
+	if success, _, err = api.node.Etcd.PutNotExist(snapshotPath, string(value)); err != nil { // 这里一定会执行,仔细找下
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 
