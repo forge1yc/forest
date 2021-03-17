@@ -116,6 +116,7 @@ func (node *JobNode) initNode() {
 
 	}
 	if !txResponse.Success {
+		// 这里认为的进行了退出，所以这个日志管理感觉海挺靠谱？？
 		log.Fatalf("the job node:%s, fail register to :%s,the job node id exist ", node.id, node.registerPath)
 	}
 	log.Printf("the job node:%s, success register to :%s", node.id, node.registerPath)
