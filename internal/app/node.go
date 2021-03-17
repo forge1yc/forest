@@ -1,18 +1,19 @@
-package forest
+package app
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/global"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/xorm"
 	"github.com/labstack/gommon/log"
 	"time"
 )
 
-const (
-	JobNodePath      = "/forest/server/node/" // 这是普通的节点，不过都要注册进去
-	JobNodeElectPath = "/forest/server/elect/leader" // 这个是直接写入好的,值是 ip值
-	TTL              = 5
-)
+//const (
+//	JobNodePath      = "/forest/server/node/" // 这是普通的节点，不过都要注册进去
+//	JobNodeElectPath = "/forest/server/elect/leader" // 这个是直接写入好的,值是 ip值
+//	TTL              = 5
+//)
 
 // job node
 type JobNode struct {
@@ -51,10 +52,10 @@ func NewJobNode(id string, etcd *Etcd, httpAddress, dbUrl string) (node *JobNode
 
 	node = &JobNode{ // 所以jobNode 使用ip进行区分
 		id:           id, // 这个id是ip    job就是分布式节点
-		registerPath: fmt.Sprintf("%s%s", JobNodePath, id),
-		electPath:    JobNodeElectPath,
+		registerPath: fmt.Sprintf("%s%s", global.JobNodePath, id),
+		electPath:    global.JobNodeElectPath,
 		etcd:         etcd, // etcd基本都是一样的
-		state:        NodeFollowerState,
+		state:        global.NodeFollowerState,
 		apiAddress:   httpAddress, // :2555
 		close:        make(chan bool),
 		engine:       engine, // 单独连接
@@ -72,7 +73,7 @@ func NewJobNode(id string, etcd *Etcd, httpAddress, dbUrl string) (node *JobNode
 	// create  group manager
 	node.groupManager = NewJobGroupManager(node)
 
-	node.scheduler = NewJobScheduler(node)
+	node.scheduler = NewJobScheduler(node) //这个是时间调度器
 
 	// create job manager
 	node.manager = NewJobManager(node)
@@ -126,7 +127,7 @@ func (node *JobNode) initNode() {
 // bootstrap
 func (node *JobNode) Bootstrap() {
 
-	go node.groupManager.loopLoadGroups()
+	go node.groupManager.loopLoadGroups() // 这里多余了
 	go node.manager.loopLoadJobConf()
 
 	<-node.close
@@ -156,11 +157,11 @@ func (node *JobNode) handleRegisterJobNodeChangeEvent(changeEvent *KeyChangeEven
 
 	switch changeEvent.Type {
 
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 
-	case KeyDeleteChangeEvent:
+	case global.KeyDeleteChangeEvent:
 		log.Printf("found the job node:%s register to path:%s has lose", node.id, node.registerPath)
 		go node.loopRegisterJobNode() // 如果删除了就重新注册
 
@@ -169,7 +170,7 @@ func (node *JobNode) handleRegisterJobNodeChangeEvent(changeEvent *KeyChangeEven
 
 func (node *JobNode) registerJobNode() (txResponse *TxResponse, err error) {
 
-	return node.etcd.TxKeepaliveWithTTL(node.registerPath, node.id, TTL)
+	return node.etcd.TxKeepaliveWithTTL(node.registerPath, node.id, global.TTL)
 }
 
 // loop register the job node
@@ -204,7 +205,7 @@ RETRY:
 // elect the leader
 func (node *JobNode) elect() (txResponse *TxResponse, err error) {
 
-	return node.etcd.TxKeepaliveWithTTL(node.electPath, node.id, TTL) // 这就算是leader了，之哟啊成功
+	return node.etcd.TxKeepaliveWithTTL(node.electPath, node.id, global.TTL) // 这就算是leader了，之哟啊成功
 
 }
 
@@ -228,12 +229,12 @@ func (node *JobNode) handleElectLeaderChangeEvent(changeEvent *KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
-	case KeyDeleteChangeEvent:
-		node.changeState(NodeFollowerState)
+	case global.KeyDeleteChangeEvent:
+		node.changeState(global.NodeFollowerState)
 		node.loopStartElect()
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 
 	}
 
@@ -254,16 +255,16 @@ RETRY:
 	}
 
 	if txResponse.Success {
-		node.changeState(NodeLeaderState) // 建立租约成功了，那么就要同步所有最新的配置信息
+		node.changeState(global.NodeLeaderState) // 建立租约成功了，那么就要同步所有最新的配置信息
 		log.Printf("the job node:%s,elect  success to :%s", node.id, node.electPath)
 	} else {
 		v := txResponse.Value
 		if v != node.id {
 			log.Printf("the job node:%s,give up elect request because the other job node：%s elect to:%s", node.id, v, node.electPath) // 这里还能返回其他当选的节点，厉害
-			node.changeState(NodeFollowerState)
+			node.changeState(global.NodeFollowerState)
 		} else { // 这里还是竞选成功的，感觉有问题啊，这个意思是之前就是leader节点了
 			log.Printf("the job node:%s, has already elect  success to :%s", node.id, node.electPath)
-			node.changeState(NodeLeaderState)
+			node.changeState(global.NodeLeaderState)
 		}
 	}
 

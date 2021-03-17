@@ -1,6 +1,7 @@
-package forest
+package app
 
 import (
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 	"sync"
 	"time"
@@ -48,13 +49,13 @@ func (c *JobCollection) watch() {
 // handle the job execute status
 func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *KeyChangeEvent) {
 
-	if c.node.state == NodeFollowerState {
+	if c.node.state == global.NodeFollowerState {
 		return
 	}
 
 	switch event.Type {
 
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 
 		if len(event.Value) == 0 {
 			return
@@ -69,7 +70,7 @@ func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *KeyChangeEv
 		}
 		c.handleJobExecuteSnapshot(event.Key, executeSnapshot)
 
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 
 		if len(event.Value) == 0 {
 			return
@@ -84,7 +85,7 @@ func (c *JobCollection) handleJobExecuteStatusCollectionEvent(event *KeyChangeEv
 
 		c.handleJobExecuteSnapshot(event.Key, executeSnapshot)
 
-	case KeyDeleteChangeEvent:
+	case global.KeyDeleteChangeEvent:
 
 	}
 }
@@ -115,7 +116,7 @@ func (c *JobCollection) handleJobExecuteSnapshot(path string, snapshot *JobExecu
 // handle create job execute snapshot
 func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) {
 
-	if snapshot.Status == JobExecuteSnapshotUnkonwStatus || snapshot.Status == JobExecuteSnapshotErrorStatus || snapshot.Status == JobExecuteSnapshotSuccessStatus {
+	if snapshot.Status == global.JobExecuteSnapshotUnkonwStatus || snapshot.Status == global.JobExecuteSnapshotErrorStatus || snapshot.Status == global.JobExecuteSnapshotSuccessStatus {
 		_ = c.node.etcd.Delete(path)
 	}
 
@@ -126,7 +127,7 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 		days = TimeSubDays(time.Now(), dateTime)
 
 	}
-	if snapshot.Status == JobExecuteSnapshotDoingStatus && days >= 3 {
+	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {
 		_ = c.node.etcd.Delete(path)
 	}  // 大于三天的为啥就删除了
 	_, err = c.node.engine.Insert(snapshot)
@@ -138,7 +139,7 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 // handle update job execute snapshot
 func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *JobExecuteSnapshot) {
 
-	if snapshot.Status == JobExecuteSnapshotUnkonwStatus || snapshot.Status == JobExecuteSnapshotErrorStatus || snapshot.Status == JobExecuteSnapshotSuccessStatus { // 成功,失败,未知状态都删除？？？ 这里好像删除的上报的目录
+	if snapshot.Status == global.JobExecuteSnapshotUnkonwStatus || snapshot.Status == global.JobExecuteSnapshotErrorStatus || snapshot.Status == global.JobExecuteSnapshotSuccessStatus { // 成功,失败,未知状态都删除？？？ 这里好像删除的上报的目录
 		_ = c.node.etcd.Delete(path)
 	}
 
@@ -149,7 +150,7 @@ func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *Jo
 		days = TimeSubDays(time.Now(), dateTime)
 
 	}
-	if snapshot.Status == JobExecuteSnapshotDoingStatus && days >= 3 {
+	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {
 		_ = c.node.etcd.Delete(path)
 	}
 
@@ -208,7 +209,7 @@ func (c *JobCollection) loop() {
 					continue
 				}
 
-				if executeSnapshot.Status == JobExecuteSnapshotSuccessStatus || executeSnapshot.Status == JobExecuteSnapshotErrorStatus || executeSnapshot.Status == JobExecuteSnapshotUnkonwStatus {
+				if executeSnapshot.Status == global.JobExecuteSnapshotSuccessStatus || executeSnapshot.Status == global.JobExecuteSnapshotErrorStatus || executeSnapshot.Status == global.JobExecuteSnapshotUnkonwStatus {
 					path := string(keys[pos])
 					c.handleJobExecuteSnapshot(path, executeSnapshot)
 				}

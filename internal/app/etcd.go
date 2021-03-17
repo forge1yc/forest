@@ -1,7 +1,8 @@
-package forest
+package app
 
 import (
 	"context"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	"log"
@@ -79,7 +80,7 @@ func (etcd *Etcd) GetWithPrefixKey(prefixKey string) (keys [][]byte, values [][]
 		return
 	}
 
-	if len(getResponse.Kvs) == 0 {
+	if len(getResponse.Kvs) == 0 {// 完了，这里为啥不是请求很多的机器，
 		return
 	}
 
@@ -227,7 +228,7 @@ func (etcd *Etcd) Watch(key string) (keyChangeEventResponse *WatchKeyChangeRespo
 
 	go func() {
 
-		for ch := range watchChans { // 这里也是一直监控的，这样一看这个keepAlive 作用是啥,锁吗
+		for ch := range watchChans { // 这里也是一直监控的，这样一看这个keepAlive 作用是啥,锁吗 // 这里会阻塞，但是时间怎么控制的
 
 			if ch.Canceled {
 
@@ -279,23 +280,23 @@ func (etcd *Etcd) WatchWithPrefixKey(prefixKey string) (keyChangeEventResponse *
 }
 
 // handle the key change event
-func (etcd *Etcd) handleKeyChangeEvent(event *clientv3.Event, events chan *KeyChangeEvent) {
+func (etcd *Etcd) handleKeyChangeEvent(event *clientv3.Event, events chan *KeyChangeEvent) { // 所以这个事件应该谁来决定呢
 
 	changeEvent := &KeyChangeEvent{
 		Key: string(event.Kv.Key),
 	}
 	switch event.Type {
 
-	case mvccpb.PUT:
+	case mvccpb.PUT: // 只有这两种事件
 		if event.IsCreate() {
-			changeEvent.Type = KeyCreateChangeEvent
+			changeEvent.Type = global.KeyCreateChangeEvent
 		} else {
-			changeEvent.Type = KeyUpdateChangeEvent
+			changeEvent.Type = global.KeyUpdateChangeEvent
 		}
 		changeEvent.Value = event.Kv.Value
 	case mvccpb.DELETE:
 
-		changeEvent.Type = KeyDeleteChangeEvent
+		changeEvent.Type = global.KeyDeleteChangeEvent
 	}
 	events <- changeEvent // 把事件写入
 
@@ -424,8 +425,8 @@ func (etcd *Etcd) TxKeepaliveWithTTL(key, value string, ttl int64) (txResponse *
 	return
 }
 
-// transfer from  to with value
-func (etcd *Etcd) transfer(from string, to string, value string) (success bool, err error) {
+// Transfer from  to with value
+func (etcd *Etcd) Transfer(from string, to string, value string) (success bool, err error) {
 
 	var (
 		txnResponse *clientv3.TxnResponse

@@ -1,4 +1,4 @@
-package forest
+package app
 
 import (
 	"encoding/json"
@@ -87,7 +87,7 @@ func GetLocalIpAddress() (ip string) {
 		if ipnet, ok := value.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
 				ip = ipnet.IP.String()
-				return
+				return // 查不到就是localhost
 			}
 		}
 	}

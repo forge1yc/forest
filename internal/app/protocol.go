@@ -1,4 +1,4 @@
-package forest
+package app
 
 import (
 	"context"
@@ -7,34 +7,7 @@ import (
 	"time"
 )
 
-const (
-	KeyCreateChangeEvent = iota
-	KeyUpdateChangeEvent
-	KeyDeleteChangeEvent
-)
 
-const (
-	JobCreateChangeEvent = iota
-	JobUpdateChangeEvent
-	JobDeleteChangeEvent
-)
-
-const (
-	JobRunningStatus = iota + 1
-	JobStopStatus
-)
-
-const (
-	NodeFollowerState = iota
-	NodeLeaderState
-)
-
-const (
-	JobExecuteSnapshotDoingStatus   = 1
-	JobExecuteSnapshotSuccessStatus = 2
-	JobExecuteSnapshotUnkonwStatus  = 3
-	JobExecuteSnapshotErrorStatus   = -1
-)
 
 // key 变化事件
 type KeyChangeEvent struct {
@@ -45,7 +18,7 @@ type KeyChangeEvent struct {
 
 // 监听key 变化响应
 type WatchKeyChangeResponse struct {
-	Event      chan *KeyChangeEvent
+	Event      chan *KeyChangeEvent // 这个很重要，触发各种事件
 	CancelFunc context.CancelFunc
 	Watcher    clientv3.Watcher
 }
@@ -103,7 +76,7 @@ type SchedulePlan struct {
 	Params     string `json:"params"`
 	Mobile     string `json:"mobile"`
 	Remark     string `json:"remark"`
-	schedule   cron.Schedule
+	Schedule   cron.Schedule
 	NextTime   time.Time `json:"nextTime"`
 	BeforeTime time.Time `json:"beforeTime"`
 	Version    int       `json:"version"`

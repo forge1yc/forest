@@ -1,7 +1,8 @@
-package forest
+package app
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 	"time"
 )
@@ -49,7 +50,7 @@ func (f *JobSnapshotFailOver) handleJobClientDeleteEvent(event *JobClientDeleteE
 	)
 
 RETRY:
-	prefixKey := fmt.Sprintf(JobClientSnapshotPath, event.Group.name, event.Client.name)
+	prefixKey := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, event.Client.name)
 	if keys, values, err = f.node.etcd.GetWithPrefixKey(prefixKey); err != nil {
 		log.Errorf("the fail client:%v for path:%s,error must retry", event.Client, prefixKey)
 		time.Sleep(time.Second) // 失败了就一直产生尝试吗
@@ -69,12 +70,12 @@ RETRY:
 			continue
 		}
 
-		to := fmt.Sprintf(JobClientSnapshotPath, event.Group.name, client.name)
+		to := fmt.Sprintf(global.JobClientSnapshotPath, event.Group.name, client.name)
 
 		from := string(keys[pos])
 		value := string(values[pos])
 		//  transfer the kv
-		if success, _ = f.node.etcd.transfer(from, to, value); success {
+		if success, _ = f.node.etcd.Transfer(from, to, value); success {
 			log.Infof("the fail client:%v for path:%s success transfer form %s to %s", event.Client, prefixKey, from, to)  // 这里从一个点，转移到另一个点有点没有想明白
 		}
 

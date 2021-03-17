@@ -1,14 +1,15 @@
-package forest
+package app
 
 import (
 	"errors"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 	"strings"
 )
 
-const (
-	JobConfPath = "/forest/server/conf/"
-)
+//const (
+//	JobConfPath = "/forest/server/conf/"
+//)
 
 type JobManager struct {
 	node *JobNode
@@ -21,6 +22,7 @@ func NewJobManager(node *JobNode) (manager *JobManager) {
 	}
 
 	go manager.watchJobConfPath()
+	//go manager.loopLoadJobConf()
 
 	return
 
@@ -28,9 +30,9 @@ func NewJobManager(node *JobNode) (manager *JobManager) {
 
 func (manager *JobManager) watchJobConfPath() {
 
-	keyChangeEventResponse := manager.node.etcd.WatchWithPrefixKey(JobConfPath)
+	keyChangeEventResponse := manager.node.etcd.WatchWithPrefixKey(global.JobConfPath)
 
-	for ch := range keyChangeEventResponse.Event {
+	for ch := range keyChangeEventResponse.Event { // 这里更新配置
 
 		manager.handleJobConfChangeEvent(ch)
 	}
@@ -44,7 +46,7 @@ RETRY:
 		values [][]byte
 		err    error
 	)
-	if keys, values, err = manager.node.etcd.GetWithPrefixKey(JobConfPath); err != nil {
+	if keys, values, err = manager.node.etcd.GetWithPrefixKey(global.JobConfPath); err != nil {
 
 		goto RETRY
 	}
@@ -60,7 +62,7 @@ RETRY:
 			continue
 		}
 		manager.node.scheduler.pushJobChangeEvent(&JobChangeEvent{
-			Type: JobCreateChangeEvent,
+			Type: global.JobCreateChangeEvent,
 			Conf: jobConf,
 		})
 
@@ -68,17 +70,17 @@ RETRY:
 
 }
 
-func (manager *JobManager) handleJobConfChangeEvent(changeEvent *KeyChangeEvent) {
+func (manager *JobManager) handleJobConfChangeEvent(changeEvent *KeyChangeEvent) { // 处理工作创建
 
 	switch changeEvent.Type {
 
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 
 		manager.handleJobCreateEvent(changeEvent.Value)
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 
 		manager.handleJobUpdateEvent(changeEvent.Value)
-	case KeyDeleteChangeEvent:
+	case global.KeyDeleteChangeEvent:
 
 		manager.handleJobDeleteEvent(changeEvent.Key)
 
@@ -102,7 +104,7 @@ func (manager *JobManager) handleJobCreateEvent(value []byte) {
 	}
 
 	manager.node.scheduler.pushJobChangeEvent(&JobChangeEvent{
-		Type: JobCreateChangeEvent,
+		Type: global.JobCreateChangeEvent,
 		Conf: jobConf,
 	})
 
@@ -125,7 +127,7 @@ func (manager *JobManager) handleJobUpdateEvent(value []byte) {
 	}
 
 	manager.node.scheduler.pushJobChangeEvent(&JobChangeEvent{
-		Type: JobUpdateChangeEvent,
+		Type: global.JobUpdateChangeEvent,
 		Conf: jobConf,
 	})
 
@@ -151,7 +153,7 @@ func (manager *JobManager) handleJobDeleteEvent(key string) {
 	}
 
 	manager.node.scheduler.pushJobChangeEvent(&JobChangeEvent{
-		Type: JobDeleteChangeEvent,
+		Type: global.JobDeleteChangeEvent,
 		Conf: jobConf,
 	})
 
@@ -166,7 +168,7 @@ func (manager *JobManager) AddJob(jobConf *JobConf) (err error) {
 		success bool
 	)
 
-	if value, err = manager.node.etcd.Get(GroupConfPath + jobConf.Group); err != nil {
+	if value, err = manager.node.etcd.Get(global.GroupConfPath + jobConf.Group); err != nil { // 这里只是为了检测集群的存在性
 		return
 	}
 
@@ -176,13 +178,13 @@ func (manager *JobManager) AddJob(jobConf *JobConf) (err error) {
 		return
 	}
 
-	jobConf.Id = GenerateSerialNo()
+	jobConf.Id = GenerateSerialNo() // 就是要发布的时候给一个id，然后后面的话引用这个id，给发到一个快照到专门的路径上，然后slave节点做完了就给返回一个结果，给到一个失败的路径上？？？？ // 所以还是发送快照过去，昨晚就删除这个任务，就和bus一样。如果失败了，就写入一个专门的路径，统计所有的坏节点？？？但是失败的概率还是很小的
 	jobConf.Version = 1
 
 	if v, err = ParkJobConf(jobConf); err != nil { //值都是json字符串
 		return
 	}
-	if success, _, err = manager.node.etcd.PutNotExist(JobConfPath+jobConf.Id, string(v)); err != nil { // 这里怎么没有看到事件变化啊
+	if success, _, err = manager.node.etcd.PutNotExist(global.JobConfPath+jobConf.Id, string(v)); err != nil { // 这里怎么没有看到事件变化啊 // 这里是存取任务
 		return
 	}
 
@@ -203,7 +205,7 @@ func (manager *JobManager) editJob(jobConf *JobConf) (err error) {
 		oldConf *JobConf
 	)
 
-	if value, err = manager.node.etcd.Get(GroupConfPath + jobConf.Group); err != nil {
+	if value, err = manager.node.etcd.Get(global.GroupConfPath + jobConf.Group); err != nil {
 		return
 	}
 
@@ -218,7 +220,7 @@ func (manager *JobManager) editJob(jobConf *JobConf) (err error) {
 		return
 	}
 
-	if value, err = manager.node.etcd.Get(JobConfPath + jobConf.Id); err != nil {
+	if value, err = manager.node.etcd.Get(global.JobConfPath + jobConf.Id); err != nil {
 		return
 	}
 
@@ -236,7 +238,7 @@ func (manager *JobManager) editJob(jobConf *JobConf) (err error) {
 		return
 	}
 
-	if success, err = manager.node.etcd.Update(JobConfPath+jobConf.Id, string(v), string(value)); err != nil {
+	if success, err = manager.node.etcd.Update(global.JobConfPath+jobConf.Id, string(v), string(value)); err != nil {
 		return
 	}
 
@@ -259,7 +261,7 @@ func (manager *JobManager) deleteJob(jobConf *JobConf) (err error) {
 		return
 	}
 
-	if value, err = manager.node.etcd.Get(JobConfPath + jobConf.Id); err != nil {
+	if value, err = manager.node.etcd.Get(global.JobConfPath + jobConf.Id); err != nil {
 		return
 	}
 
@@ -267,7 +269,7 @@ func (manager *JobManager) deleteJob(jobConf *JobConf) (err error) {
 		err = errors.New("此任务配置记录不存在")
 		return
 	}
-	err = manager.node.etcd.Delete(JobConfPath + jobConf.Id)
+	err = manager.node.etcd.Delete(global.JobConfPath + jobConf.Id)
 
 	return
 }
@@ -279,7 +281,7 @@ func (manager *JobManager) jobList() (jobConfs []*JobConf, err error) {
 		keys   [][]byte
 		values [][]byte
 	)
-	if keys, values, err = manager.node.etcd.GetWithPrefixKey(JobConfPath); err != nil {
+	if keys, values, err = manager.node.etcd.GetWithPrefixKey(global.JobConfPath); err != nil {
 		return
 	}
 
@@ -314,13 +316,13 @@ func (manager *JobManager) addGroup(groupConf *GroupConf) (err error) {
 		return
 	}
 
-	if success, _, err = manager.node.etcd.PutNotExist(GroupConfPath+groupConf.Name, string(value)); err != nil {
-		return
+	if success, _, err = manager.node.etcd.PutNotExist(global.GroupConfPath+groupConf.Name, string(value)); err != nil { // 这里只管推上去，因为开了监控了，一旦有更新，就会同步过来
+		return //在这里添加集群
 	}
 
 	if !success {
 
-		err = errors.New("此任务集群已存在")
+		err = errors.New("此任务集群已存在") //这个是符合逻辑的
 	}
 
 	return
@@ -334,7 +336,7 @@ func (manager *JobManager) groupList() (groupConfs []*GroupConf, err error) {
 		keys   [][]byte
 		values [][]byte
 	)
-	if keys, values, err = manager.node.etcd.GetWithPrefixKey(GroupConfPath); err != nil {
+	if keys, values, err = manager.node.etcd.GetWithPrefixKey(global.GroupConfPath); err != nil {
 		return
 	}
 
@@ -365,7 +367,7 @@ func (manager *JobManager) nodeList() (nodes []string, err error) {
 		keys   [][]byte
 		values [][]byte
 	)
-	if keys, values, err = manager.node.etcd.GetWithPrefixKey(JobNodePath); err != nil {
+	if keys, values, err = manager.node.etcd.GetWithPrefixKey(global.JobNodePath); err != nil {
 		return
 	}
 

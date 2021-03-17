@@ -1,7 +1,8 @@
-package forest
+package app
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/go-xorm/xorm"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -26,12 +27,12 @@ func NewJobAPi(node *JobNode) (api *JobAPi) {
 		AllowOrigins: []string{"*", "*"},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAccessControlAllowOrigin},
 	}))
-	e.POST("/job/add", api.AddJob)
+	e.POST("/job/add", api.AddJob) //这个可以进行
 	e.POST("/job/edit", api.editJob)
 	e.POST("/job/delete", api.deleteJob)
 	e.POST("/job/list", api.jobList)
 	e.POST("/job/execute", api.manualExecute)
-	e.POST("/group/add", api.addGroup)
+	e.POST("/group/add", api.addGroup) // 节点是注册的，集群是手动添加的，这样看
 	e.POST("/group/list", api.groupList)
 	e.POST("/node/list", api.nodeList)
 	e.POST("/plan/list", api.planList)
@@ -40,7 +41,7 @@ func NewJobAPi(node *JobNode) (api *JobAPi) {
 	e.POST("/snapshot/delete", api.snapshotDelete)
 	e.POST("/execute/snapshot/list", api.executeSnapshotList)
 	go func() {
-		e.Logger.Fatal(e.Start(node.apiAddress))
+		e.Logger.Fatal(e.Start(node.apiAddress)) // 这里就开始无限执行了 // 如果这个东西放到最后就不需要这样了，可以直接运行，自己就会阻塞无限循环，如果放到中间，就必须进行协程运行。
 	}()
 	api.echo = e
 	return
@@ -53,7 +54,7 @@ func (api *JobAPi) AddJob(context echo.Context) (err error) {
 		message string
 	)
 	jobConf := new(JobConf)
-	if err = context.Bind(jobConf); err != nil {
+	if err = context.Bind(jobConf); err != nil { // 这里是前端传过来直接制定了
 
 		message = "请求参数不能为空"
 		goto ERROR
@@ -205,7 +206,9 @@ func (api *JobAPi) addGroup(context echo.Context) (err error) {
 	var (
 		message string
 	)
-	groupConf := new(GroupConf)
+	//fmt.Printf("%+v\n",context)
+	//fmt.Println(context.QueryParam("a"))
+	groupConf := new(GroupConf) // 所以添加一个json就行了，在header中
 	if err = context.Bind(groupConf); err != nil {
 
 		message = "请求参数不能为空"
@@ -260,7 +263,7 @@ func (api *JobAPi) nodeList(context echo.Context) (err error) {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 
-	if leader, err = api.node.etcd.Get(JobNodeElectPath); err != nil {
+	if leader, err = api.node.etcd.Get(global.JobNodeElectPath); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: err.Error()})
 	}
 
@@ -273,9 +276,9 @@ func (api *JobAPi) nodeList(context echo.Context) (err error) {
 	for _, name := range nodeNames {
 
 		if name == string(leader) {
-			nodes = append(nodes, &Node{Name: name, State: NodeLeaderState})
+			nodes = append(nodes, &Node{Name: name, State: global.NodeLeaderState})
 		} else {
-			nodes = append(nodes, &Node{Name: name, State: NodeFollowerState}) // follower node
+			nodes = append(nodes, &Node{Name: name, State: global.NodeFollowerState}) // follower node
 		}
 
 	}
@@ -327,7 +330,7 @@ func (api *JobAPi) clientList(context echo.Context) (err error) {
 		message = "请选择任务集群"
 		goto ERROR
 	}
-	groupPath = fmt.Sprintf("%s%s", GroupConfPath, query.Group)
+	groupPath = fmt.Sprintf("%s%s", global.GroupConfPath, query.Group)
 	if group = api.node.groupManager.groups[groupPath]; group == nil {
 		message = "此任务集群不存在"
 		goto ERROR
@@ -365,14 +368,14 @@ func (api *JobAPi) snapshotList(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	prefix = JobSnapshotPath
+	prefix = global.JobSnapshotPath
 	if query.Group != "" && query.Id != "" && query.Ip != "" {
-		prefix = fmt.Sprintf(JobClientSnapshotPath, query.Group, query.Ip)
+		prefix = fmt.Sprintf(global.JobClientSnapshotPath, query.Group, query.Ip)
 		prefix = fmt.Sprintf("%s/%s", prefix, query.Id)
 	} else if query.Group != "" && query.Ip != "" {
-		prefix = fmt.Sprintf(JobClientSnapshotPath, query.Group, query.Ip)
+		prefix = fmt.Sprintf(global.JobClientSnapshotPath, query.Group, query.Ip)
 	} else if query.Group != "" && query.Ip == "" {
-		prefix = fmt.Sprintf(JobSnapshotGroupPath, query.Group)
+		prefix = fmt.Sprintf(global.JobSnapshotGroupPath, query.Group)
 	} // 这里是为了添加筛选条件,前端传过来的
 
 	if keys, values, err = api.node.etcd.GetWithPrefixKeyLimit(prefix, 500); err != nil { // 这里限制500
@@ -426,7 +429,7 @@ func (api *JobAPi) snapshotDelete(context echo.Context) (err error) {
 		goto ERROR
 	}
 
-	key = fmt.Sprintf(JobClientSnapshotPath, query.Group, query.Ip)
+	key = fmt.Sprintf(global.JobClientSnapshotPath, query.Group, query.Ip)
 	key = fmt.Sprintf("%s/%s", key, query.Id)
 	if err = api.node.etcd.Delete(key); err != nil {
 		message = err.Error()
@@ -543,7 +546,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// 查询任务配置
-	if value, err = api.node.etcd.Get(JobConfPath + conf.Id); err != nil {
+	if value, err = api.node.etcd.Get(global.JobConfPath + conf.Id); err != nil {
 		return context.JSON(http.StatusOK, Result{Code: -1, Message: "查询任务配置出现异常:" + err.Error()})
 	}
 
@@ -563,7 +566,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	}
 
 	// build the job snapshot path
-	snapshotPath = fmt.Sprintf(JobClientSnapshotPath, conf.Group, client.name)
+	snapshotPath = fmt.Sprintf(global.JobClientSnapshotPath, conf.Group, client.name)
 
 	// build job snapshot
 	snapshotId := GenerateSerialNo() + conf.Id

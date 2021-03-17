@@ -1,9 +1,10 @@
-package forest
+package app
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/labstack/gommon/log"
 	"math/rand"
@@ -11,10 +12,11 @@ import (
 	"time"
 )
 
-const (
-	GroupConfPath = "/forest/server/group/" // 这里嘴一开始谁注册的
-	ClientPath    = "/forest/client/%s/clients/"
-)
+//const (
+//	GroupConfPath = "/forest/server/group/" // 这里一开始谁注册的，注册也是往这里注册
+//	ClientPath    = "/forest/client/%s/clients/" // 这是工作节点的注册路径
+//
+//)
 
 type JobGroupManager struct {
 	node   *JobNode
@@ -39,10 +41,10 @@ func NewJobGroupManager(node *JobNode) (mgr *JobGroupManager) {
 }
 
 // watch the group path
-func (mgr *JobGroupManager) watchGroupPath() {
+func (mgr *JobGroupManager) watchGroupPath() { // 阻塞监视 // 这种阻塞监视的都需要用go起
 
 	// 这里查看所有的
-	keyChangeEventResponse := mgr.node.etcd.WatchWithPrefixKey(GroupConfPath)
+	keyChangeEventResponse := mgr.node.etcd.WatchWithPrefixKey(global.GroupConfPath)
 	// 下面可以用for + switch 判断
 	for ch := range keyChangeEventResponse.Event {
 		mgr.handleGroupChangeEvent(ch) // 阻塞一直等待事件的到来
@@ -58,7 +60,7 @@ RETRY:
 		values [][]byte
 		err    error
 	)
-	if keys, values, err = mgr.node.etcd.GetWithPrefixKey(GroupConfPath); err != nil { // 所以之前必须有一个etcd管理，来注册所有的节点信息，在前面应该有配置,node那里
+	if keys, values, err = mgr.node.etcd.GetWithPrefixKey(global.GroupConfPath); err != nil { // 所以之前必须有一个etcd管理，来注册所有的节点信息，在前面应该有配置,node那里
 
 		goto RETRY // 拿不到集群的就一直尝试，这里是拿所有集群，所以每个节点都要拿到所有的信息
 	}
@@ -87,9 +89,9 @@ func (mgr *JobGroupManager) addGroup(name, path string) {
 
 	if _, ok := mgr.groups[path]; ok {
 
-		return
+		return // 已经存在就返回
 	}
-	group := NewGroup(name, path, mgr.node)
+	group := NewGroup(name, path, mgr.node) // 添加一个group之后，后面就自动监控节点了，这里可以先写在define里面，之后看情况考虑是否添加到service.conf 里面
 	mgr.groups[path] = group
 	log.Infof("add a new group:%s,for path:%s", name, path)
 
@@ -123,12 +125,12 @@ func (mgr *JobGroupManager) handleGroupChangeEvent(changeEvent *KeyChangeEvent) 
 
 	switch changeEvent.Type {
 
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 		mgr.handleGroupCreateEvent(changeEvent)
 
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 		// ignore
-	case KeyDeleteChangeEvent:
+	case global.KeyDeleteChangeEvent:
 		mgr.handleGroupDeleteEvent(changeEvent)
 	}
 }
@@ -161,7 +163,7 @@ func (mgr *JobGroupManager) selectClient(name string) (client *Client, err error
 	)
 
 	// 这里设置的是可以自选集群，其实挺好的，然后再集群里面找
-	if group, ok = mgr.groups[GroupConfPath+name]; !ok {
+	if group, ok = mgr.groups[global.GroupConfPath+name]; !ok {
 		err = errors.New(fmt.Sprintf("the group:%s not found", name))
 		return
 	}
@@ -188,7 +190,7 @@ func NewGroup(name, path string, node *JobNode) (group *Group) {
 		name:      name,
 		path:      path,
 		node:      node,
-		watchPath: fmt.Sprintf(ClientPath, name),  // name is ip
+		watchPath: fmt.Sprintf(global.ClientPath, name), // name is ip
 		clients:   make(map[string]*Client),
 		lk:        &sync.RWMutex{},
 	}
@@ -225,7 +227,7 @@ RETRY:
 	)
 
 	// 这里能这样做是因为节点初始化的时候都注册进去了
-	prefix := fmt.Sprintf(ClientPath, group.name)
+	prefix := fmt.Sprintf(global.ClientPath, group.name)
 	if keys, values, err = group.node.etcd.GetWithPrefixKey(prefix); err != nil { // 这里面是所有的ip，也就是真实的主机
 
 		time.Sleep(time.Second)
@@ -254,14 +256,14 @@ func (group *Group) handleClientChangeEvent(changeEvent *KeyChangeEvent) {
 
 	switch changeEvent.Type {
 
-	case KeyCreateChangeEvent:
+	case global.KeyCreateChangeEvent:
 		path := changeEvent.Key // path 是 key value 代表 集群
 		name := string(changeEvent.Value) // name 是ip
 		group.addClient(name, path)
 
-	case KeyUpdateChangeEvent:
+	case global.KeyUpdateChangeEvent:
 		//ignore
-	case KeyDeleteChangeEvent:
+	case global.KeyDeleteChangeEvent:
 		path := changeEvent.Key
 		group.deleteClient(path)
 	}
@@ -305,14 +307,14 @@ func (group *Group) deleteClient(path string) {
 	log.Printf("delete a  client for path:%s", path)
 
 	// fail over
-	if group.node.state == NodeLeaderState {
+	if group.node.state == global.NodeLeaderState {
 		group.node.failOver.deleteClientEventChans <- &JobClientDeleteEvent{Group: group, Client: client}
 	}
 
 }
 
 func (group *Group) selectClient() (client *Client, err error) {
-	group.lk.RLock()
+	group.lk.RLock() // 锁一下怕 同时被选择吗,怕一个客户端同时
 	defer group.lk.RUnlock()
 
 	if len(group.clients) == 0 { // 初始化的时候一个集群下面有多少都被添加进去了
@@ -322,7 +324,7 @@ func (group *Group) selectClient() (client *Client, err error) {
 
 	num := len(group.clients)
 
-	pos := rand.Intn(num) // 就是为了随机选择一个client，client 带ip
+	pos := rand.Intn(num) //就是为了随机选择一个client，client 带ip
 
 	index := 0
 

@@ -1,15 +1,16 @@
-package forest
+package app
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 )
 
-const (
-	JobSnapshotPath       = "/forest/client/snapshot/"
-	JobSnapshotGroupPath  = "/forest/client/snapshot/%s/"
-	JobClientSnapshotPath = "/forest/client/snapshot/%s/%s/"
-)
+//const (
+//	JobSnapshotPath       = "/forest/client/snapshot/"
+//	JobSnapshotGroupPath  = "/forest/client/snapshot/%s/"
+//	JobClientSnapshotPath = "/forest/client/snapshot/%s/%s/"
+//)
 
 type JobExecutor struct {
 	node      *JobNode
@@ -51,7 +52,7 @@ func (exec *JobExecutor) handleJobSnapshot(snapshot *JobSnapshot) {
 	snapshot.Ip = clientName // name 对应的就是ip
 
 	log.Printf("clientName:%#v", clientName)
-	snapshotPath := fmt.Sprintf(JobClientSnapshotPath, group, clientName)
+	snapshotPath := fmt.Sprintf(global.JobClientSnapshotPath, group, clientName) // 往这个ip放快照，所以我到时候也需要这样，grindstone如果想用的话,我可以给这个＋ key
 
 	log.Printf("snapshotPath:%#v", snapshotPath)
 	value, err := ParkJobSnapshot(snapshot) // 这里就是一个json字符串了
@@ -60,7 +61,7 @@ func (exec *JobExecutor) handleJobSnapshot(snapshot *JobSnapshot) {
 		return
 	}
 	if err = exec.node.etcd.Put(snapshotPath+snapshot.Id, string(value)); err != nil { // 快照存储在etcd？？？   // value 里面带有ip，client端就自己从自己的配置里面拿取就行,如果grindstone也这样设计的话，就需要把上游的资源也一块给下游，就按照这个格式给，下游做完了就可以反馈说删除这个点，如果中途发生了什么，没有收到做完的信号，那么就可以把这个快照进行二次分配，这样看逻辑上还是行得通的
-		log.Warnf("put  the snapshot  error:%#v", group, err)
+		log.Warnf("put  the snapshot  error:%#v", group, err) //所以这里放到etcd没有问题，我就改了他就行了，加上死活节点的检测
 	}
 
 }
