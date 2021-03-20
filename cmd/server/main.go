@@ -11,11 +11,10 @@ import (
 
 const (
 	//DefaultEndpoints   = "10.96.99.96:2379,39.106.32.5,39.106.32.5,39.106.32.5"
-	DefaultEndpoints   = "39.106.32.5:2379,39.106.32.5:2479," +
-		"39.106.32.5:2579"
+	DefaultEndpoints   = "39.106.32.5:2379,39.106.32.5:2479,39.106.32.5:2579"
 	DefaultHttpAddress = ":2856"
 	DefaultDialTimeout = 5
-	DefaultDbUrl       = "root:123456@tcp(127.0.0.1:3306)/forest?charset=utf8"
+	DefaultDbUrl       = "root:123456@tcp(39.106.32.5:3306)/forest?charset=utf8"
 )
 
 func main() {
