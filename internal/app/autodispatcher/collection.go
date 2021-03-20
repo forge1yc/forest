@@ -1,6 +1,7 @@
 package autodispatcher
 
 import (
+	"github.com/busgo/forest/internal/app/common/util"
 	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
@@ -121,11 +122,11 @@ func (c *JobCollection) handleCreateJobExecuteSnapshot(path string, snapshot *Jo
 		_ = c.node.Etcd.Delete(path)
 	}
 
-	dateTime, err := ParseInLocation(snapshot.CreateTime)
+	dateTime, err := util.ParseInLocation(snapshot.CreateTime)
 	days := 0
 	if err == nil {
 
-		days = TimeSubDays(time.Now(), dateTime)
+		days = util.TimeSubDays(time.Now(), dateTime)
 
 	}
 	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {
@@ -144,11 +145,11 @@ func (c *JobCollection) handleUpdateJobExecuteSnapshot(path string, snapshot *Jo
 		_ = c.node.Etcd.Delete(path)
 	}
 
-	dateTime, err := ParseInLocation(snapshot.CreateTime)
+	dateTime, err := util.ParseInLocation(snapshot.CreateTime)
 	days := 0
 	if err == nil {
 
-		days = TimeSubDays(time.Now(), dateTime)
+		days = util.TimeSubDays(time.Now(), dateTime)
 
 	}
 	if snapshot.Status == global.JobExecuteSnapshotDoingStatus && days >= 3 {

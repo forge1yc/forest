@@ -33,11 +33,12 @@ func TestNewForestClient(t *testing.T) {
 func TestForestClient_Bootstrap(t *testing.T) {
 
 	// 这里不需要改变，etcd固定，应该是从apollo拿一个vip，grindstone 应该是配置好了的
-	etcd, _ := ectd.NewEtcd([]string{"127.0.0.1:2379"}, time.Second*10) // 这个可以都定死，或者依赖apollo，不过依赖apollo不好，这样造成了多级依赖，不好复用
+	etcd, _ := ectd.NewEtcd([]string{"39.106.32.5:2379"}, time.Second*10) // 这个可以都定死，或者依赖apollo，不过依赖apollo不好，这样造成了多级依赖，不好复用
 
 	// 这里为啥不可以自己活得ip呢，像serve一样，应该也是可以的，然后集群就是从apollo获得这样看就没问题了，有个问题hna这种机房能否自己获得机房名字，或者直接写死？？？能否获得自己的机房名字可以和伟鸿确认下，要求自启之后就能把自己所在的机房和ip注册过去，看来不是那么容易！！！
 
 	// 所以这里的写法不能满足目前grindstone的需求，我需要改写。  看来要固定机房了，不过固定机房还不好。 有没有检测机房的东西
+
 	
 	forestClient := NewForestClient("trade", "127.0.0.1", etcd) // 这里ip需要自己检测
 	// IP这里需要手动更新，一旦开新worker的时候

@@ -1,6 +1,7 @@
 package autodispatcher
 
 import (
+	"github.com/busgo/forest/internal/app/common/util"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
 	"github.com/robfig/cron"
@@ -231,7 +232,7 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 			log.Infof("schedule execute the plan:%#v", plan)
 
 			snapshot := &JobSnapshot{
-				Id:         GenerateSerialNo() + plan.Id,
+				Id:         util.GenerateSerialNo() + plan.Id,
 				JobId:      plan.Id,
 				Name:       plan.Name,
 				Group:      plan.Group,
@@ -240,7 +241,7 @@ func (sch *JobScheduler) trySchedule() time.Duration {
 				Params:     plan.Params,
 				Mobile:     plan.Mobile,
 				Remark:     plan.Remark,
-				CreateTime: ToDateString(now),
+				CreateTime: util.ToDateString(now),
 			}
 			sch.node.Exec.pushSnapshot(snapshot) // 执行计划了，去找对应的集群
 		}

@@ -2,6 +2,7 @@ package autodispatcher
 
 import (
 	"fmt"
+	"github.com/busgo/forest/internal/app/common/util"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/go-xorm/xorm"
 	"github.com/labstack/echo"
@@ -569,7 +570,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 	snapshotPath = fmt.Sprintf(global.JobClientSnapshotPath, conf.Group, client.Name)
 
 	// build job snapshot
-	snapshotId := GenerateSerialNo() + conf.Id
+	snapshotId := util.GenerateSerialNo() + conf.Id
 	snapshot = &JobSnapshot{
 		Id:         snapshotId,
 		JobId:      conf.Id,
@@ -581,7 +582,7 @@ func (api *JobAPi) manualExecute(context echo.Context) (err error) {
 		Params:     conf.Params,
 		Mobile:     conf.Mobile,
 		Remark:     conf.Remark,
-		CreateTime: ToDateString(time.Now()),
+		CreateTime: util.ToDateString(time.Now()),
 	}
 
 	// park the job snapshot

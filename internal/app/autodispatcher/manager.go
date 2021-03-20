@@ -2,6 +2,7 @@ package autodispatcher
 
 import (
 	"errors"
+	"github.com/busgo/forest/internal/app/common/util"
 	"github.com/busgo/forest/internal/app/ectd"
 	"github.com/busgo/forest/internal/app/global"
 	"github.com/labstack/gommon/log"
@@ -179,7 +180,7 @@ func (manager *JobManager) AddJob(jobConf *JobConf) (err error) {
 		return
 	}
 
-	jobConf.Id = GenerateSerialNo() // 就是要发布的时候给一个id，然后后面的话引用这个id，给发到一个快照到专门的路径上，然后slave节点做完了就给返回一个结果，给到一个失败的路径上？？？？ // 所以还是发送快照过去，昨晚就删除这个任务，就和bus一样。如果失败了，就写入一个专门的路径，统计所有的坏节点？？？但是失败的概率还是很小的
+	jobConf.Id = util.GenerateSerialNo() // 就是要发布的时候给一个id，然后后面的话引用这个id，给发到一个快照到专门的路径上，然后slave节点做完了就给返回一个结果，给到一个失败的路径上？？？？ // 所以还是发送快照过去，昨晚就删除这个任务，就和bus一样。如果失败了，就写入一个专门的路径，统计所有的坏节点？？？但是失败的概率还是很小的
 	jobConf.Version = 1
 
 	if v, err = ParkJobConf(jobConf); err != nil { //值都是json字符串

@@ -7,10 +7,11 @@ const (
 )
 
 const (
-	DefaultEndpoints   = "10.96.99.96:2379" // etcdServer需要写几个啊，一个不会挂掉吗
+	//DefaultEndpoints   = "10.96.99.96:2379,39.106.32.5,39.106.32.5,39.106.32.5"
+	DefaultEndpoints   = "39.106.32.5:2379,39.106.32.5:2479,39.106.32.5:2579"
 	DefaultHttpAddress = ":2856"
 	DefaultDialTimeout = 5
-	DefaultDbUrl       = "root:123456@tcp(127.0.0.1:3306)/forest?charset=utf8"
+	DefaultDbUrl       = "root:123456@tcp(39.106.32.5:3306)/forest?charset=utf8"
 )
 
 const (
@@ -75,4 +76,10 @@ const (
 	JobExecuteUkonwStatus = 3
 	// 执行失败
 	JobExecuteErrorStatus = -1
+)
+
+const (
+	LogFile = "./config/log.json"
+	ConfFile = "./config/corona"
+	NodeMgrFile = "./config/nodemgr.json"
 )
